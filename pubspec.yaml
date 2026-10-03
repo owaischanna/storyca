@@ -1,0 +1,196 @@
+name: storryca
+description: "A story book app"
+# The following line prevents the package from being accidentally published to
+# pub.dev using `flutter pub publish`. This is preferred for private packages.
+publish_to: 'none' # Remove this line if you wish to publish to pub.dev
+
+# The following defines the version and build number for your application.
+# A version number is three numbers separated by dots, like 1.2.43
+# followed by an optional build number separated by a +.
+# Both the version and the builder number may be overridden in flutter
+# build by specifying --build-name and --build-number, respectively.
+# In Android, build-name is used as versionName while build-number used as versionCode.
+# Read more about Android versioning at https://developer.android.com/studio/publish/versioning
+# In iOS, build-name is used as CFBundleShortVersionString while build-number is used as CFBundleVersion.
+# Read more about iOS versioning at
+# https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
+# In Windows, build-name is used as the major, minor, and patch parts
+# of the product and file versions while build-number is used as the build suffix.
+version: 1.0.0+8
+
+environment:
+  sdk: ^3.12.1
+
+# Dependencies specify other packages that your package needs in order to work.
+# To automatically upgrade your package dependencies to the latest versions
+# consider running `flutter pub upgrade --major-versions`. Alternatively,
+# dependencies can be manually updated by changing the version numbers below to
+# the latest version available on pub.dev. To see which dependencies have newer
+# versions available, run `flutter pub outdated`.
+dependencies:
+  flutter:
+    sdk: flutter
+
+  # The following adds the Cupertino Icons font to your application.
+  # Use with the CupertinoIcons class for iOS style icons.
+  cupertino_icons: ^1.0.8
+  google_fonts: ^8.1.0
+  go_router: ^17.3.0
+  remixicon: ^4.9.3
+  shared_preferences: ^2.5.5
+  intl: ^0.20.2
+  dashed_border: ^1.0.2
+  textfield_tags: ^3.0.1
+  image_picker: ^1.2.2
+  http: ^1.5.0
+  cached_network_image: ^3.4.1
+  url_launcher: ^6.3.1
+  webview_flutter: ^4.13.0
+  google_mobile_ads: ^8.0.0
+  package_info_plus: ^8.3.1
+  in_app_purchase: ^3.3.1
+  in_app_purchase_android: ^0.5.3
+  device_info_plus: ^12.4.0
+  google_sign_in: ^7.2.0
+  firebase_core: ^4.15.0
+  firebase_messaging: ^16.7.0
+  flutter_local_notifications: ^19.5.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_launcher_icons: ^0.14.4
+  flutter_lints: ^6.0.0
+
+# For information on the generic Dart part of this file, see the
+# following page: https://dart.dev/tools/pub/pubspec
+
+# The following section is specific to Flutter packages.
+flutter:
+
+  # The following line ensures that the Material Icons font is
+  # included with your application, so that you can use the icons in
+  # the material Icons class.
+  uses-material-design: true
+
+  # To add assets to your application, add an assets section, like this:
+  assets:
+    - assets/icons/icon.png
+    - assets/images/logo-glow.png
+    - assets/images/onboarding-hero-1.png
+    - assets/images/onboarding-hero-2.png
+    - assets/images/onboarding-hero-3.png
+    - assets/images/hero-text-highlighter.png
+    - assets/images/language.png
+    - assets/images/avatar.png
+    - assets/images/rank-label.png
+    - assets/images/post-1.png
+    - assets/images/post-2.png
+    - assets/images/story1.png
+    - assets/images/story2.png
+    - assets/images/story3.png
+    - assets/images/author1.png
+    - assets/images/author2.png
+    - assets/images/author3.png
+    - assets/images/author4.png
+    - assets/images/author5.png
+    - assets/images/empty-reading-library.png
+    - assets/images/empty-saved-library.png
+    - assets/images/empty-completed-library.png
+    - assets/images/rank-crown-1.png
+    - assets/images/rank-crown-2.png
+    - assets/images/rank-crown-3.png
+    - assets/images/rank-tray-1.png
+    - assets/images/rank-tray-2.png
+    - assets/images/rank-tray-3.png
+    - assets/images/no-avatar.png
+    - assets/images/wallet.png
+    - assets/images/author-center-icon.png
+    - assets/images/earn-rewards-icon.png
+    - assets/images/inbox-icon.png
+    - assets/images/settings-icon.png
+    - assets/images/auth-icon.png
+    - assets/images/wallet-icon.png
+    - assets/images/two-step-verification.png
+    - assets/images/google-icon.png
+    - assets/images/apple-icon.png
+    - assets/images/tsv-enabled.png
+    - assets/images/tsv-disable.png
+    - assets/images/tsv-warning.png
+    - assets/images/qrcode.png
+    - assets/images/security-alert.png
+    - assets/images/no-search-result.png
+    - assets/images/signin.png
+    - assets/images/signup.png
+    - assets/images/forgot-password.png
+    - assets/images/verify-email.png
+    - assets/images/reset-password.png
+    - assets/images/facebook.png
+    - assets/images/google.png
+    - assets/images/coin1.png
+    - assets/images/coin2.png
+    - assets/images/coin3.png
+    - assets/images/coin4.png
+    - assets/images/coin5.png
+    - assets/images/coin6.png
+    - assets/images/empty-transaction-history.png
+    - assets/images/reward.png
+    - assets/images/topup.png
+    - assets/images/star.png
+    - assets/images/shield.png
+    - assets/images/announcement.png
+    - assets/images/percentage.png
+    - assets/images/message.png
+    - assets/images/no-notification.png
+    - assets/images/no-followers.png
+    - assets/images/no-followings.png
+    - assets/images/user-banner.png
+    - assets/images/no-stories-author.png
+    - assets/images/readers-note.png
+    - assets/images/trophy.png
+    - assets/images/no-reviews.png
+    - assets/images/user-banner-photo.png
+    - assets/images/a-coin.png
+    - assets/images/coins.png
+    - assets/images/user-welcome.png
+    - assets/images/notification-bell.png
+    - assets/images/rate-star.png
+    - assets/images/watch-video.png
+    - assets/images/reward-chest.png
+    - assets/images/become-author.png
+    - assets/images/no-story.png
+    - assets/images/story-created.png
+
+  # An image asset can refer to one or more resolution-specific "variants", see
+  # https://flutter.dev/to/resolution-aware-images
+
+  # For details regarding adding assets from package dependencies, see
+  # https://flutter.dev/to/asset-from-package
+
+  # To add custom fonts to your application, add a fonts section here,
+  # in this "flutter" section. Each entry in this list should have a
+  # "family" key with the font family name, and a "fonts" key with a
+  # list giving the asset and other descriptors for the font. For
+  # example:
+  # fonts:
+  #   - family: Schyler
+  #     fonts:
+  #       - asset: fonts/Schyler-Regular.ttf
+  #       - asset: fonts/Schyler-Italic.ttf
+  #         style: italic
+  #   - family: Trajan Pro
+  #     fonts:
+  #       - asset: fonts/TrajanPro.ttf
+  #       - asset: fonts/TrajanPro_Bold.ttf
+  #         weight: 700
+  #
+  # For details regarding fonts from package dependencies,
+  # see https://flutter.dev/to/font-from-package
+
+flutter_app_name:
+  name: "StorryCa"
+
+flutter_icons:
+  android: true
+  ios: true
+  image_path: assets/icons/icon.png
