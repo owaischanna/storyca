@@ -187,7 +187,6 @@ class _StoriesTabState extends State<StoriesTab> {
                       title: item.title,
                       category: item.category,
                       description: item.description,
-                      isSaved: item.isSaved,
                       reads: item.reads,
                     );
                   }),

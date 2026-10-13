@@ -38,6 +38,19 @@ class _DiscoverState extends State<Discover> {
     super.initState();
     _loadTop();
     _loadGrid();
+    // A blocked account's stories leave the server's responses — re-fetch.
+    moderationRepository.blocksChanged.addListener(_reloadAfterBlock);
+  }
+
+  void _reloadAfterBlock() {
+    _loadTop();
+    _loadGrid();
+  }
+
+  @override
+  void dispose() {
+    moderationRepository.blocksChanged.removeListener(_reloadAfterBlock);
+    super.dispose();
   }
 
   Future<void> _loadTop() async {

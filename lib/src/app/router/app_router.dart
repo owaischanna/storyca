@@ -22,6 +22,8 @@ import 'package:storryca/src/features/author/presentation/pages/become_author.da
 import 'package:storryca/src/features/author/presentation/pages/see_all_author_stories.dart';
 import 'package:storryca/src/features/discover/presentation/pages/see_all_stories.dart';
 import 'package:storryca/src/features/earn/presentation/pages/earn.dart';
+import 'package:storryca/src/features/earnings/presentation/pages/author_earnings.dart';
+import 'package:storryca/src/features/earnings/presentation/pages/bank_details_page.dart';
 import 'package:storryca/src/features/home/presentation/pages/see_all_authors.dart';
 import 'package:storryca/src/features/inbox/presentation/pages/inbox.dart';
 import 'package:storryca/src/features/main/presentation/pages/main.dart';
@@ -257,6 +259,16 @@ GoRouter createRouter() {
         path: RouteNames.authorCenter,
         name: 'author-center',
         builder: (context, state) => const AuthorCenter(),
+      ),
+      GoRoute(
+        path: RouteNames.authorEarnings,
+        name: 'author-earnings',
+        builder: (context, state) => const AuthorEarnings(),
+      ),
+      GoRoute(
+        path: RouteNames.bankDetails,
+        name: 'bank-details',
+        builder: (context, state) => const BankDetailsPage(),
       ),
       GoRoute(
         path: RouteNames.newStory,

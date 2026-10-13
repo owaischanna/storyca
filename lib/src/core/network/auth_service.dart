@@ -7,7 +7,7 @@ const String _loginAtKey = 'auth_login_at';
 
 /// How long a sign-in lasts before the reader is signed out and must log
 /// in again.
-const Duration sessionLifetime = Duration(hours: 48);
+const Duration sessionLifetime = Duration(days: 14);
 
 class AuthResult {
   AuthResult({
@@ -261,7 +261,7 @@ class AuthService {
     return (data['expires_at_unix'] as num?)?.toInt() ?? 0;
   }
 
-  /// Called after the session is ended by the 48-hour limit or a 401, so
+  /// Called after the session is ended by the 14-day limit or a 401, so
   /// the app can send the reader to Sign In.
   void Function()? onSessionExpired;
 
@@ -288,7 +288,7 @@ class AuthService {
     if (token == null) return null;
     final loginAt = prefs.getInt(_loginAtKey);
     if (loginAt == null) {
-      // Signed in before this limit existed — start their 48 hours now
+      // Signed in before this limit existed — start their 14 days now
       // rather than signing them out the moment they update.
       await prefs.setInt(_loginAtKey, DateTime.now().millisecondsSinceEpoch);
       return token;

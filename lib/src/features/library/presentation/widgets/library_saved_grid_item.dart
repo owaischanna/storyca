@@ -4,6 +4,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:remixicon/remixicon.dart';
 import 'package:storryca/src/core/widgets/app_image.dart';
 import 'package:storryca/src/core/widgets/custom_badge.dart';
+import 'package:storryca/src/core/widgets/library_bookmark.dart';
 
 class LibrarySavedGridItem extends StatelessWidget {
   const LibrarySavedGridItem({
@@ -55,7 +56,7 @@ class LibrarySavedGridItem extends StatelessWidget {
                   mainAxisSize: MainAxisSize.max,
                   children: [
                     GestureDetector(
-                      onTap: () {},
+                      onTap: () => LibraryBookmark.toggle(context, id),
                       child: Icon(
                         Remix.bookmark_fill,
                         color: Color(0xff2D0079),

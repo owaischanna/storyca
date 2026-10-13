@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:storryca/src/core/utils/compact_count.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:remixicon/remixicon.dart';
@@ -68,7 +69,7 @@ class LibraryCompletedListItem extends StatelessWidget {
                               ),
                             ),
                             Text(
-                              '${_formatCount(reads)} Reads',
+                              '${compactCount(reads)} Reads',
                               style: TextStyle(
                                 color: Color(0xffC384FF),
                                 fontSize: 12,
@@ -174,12 +175,4 @@ class LibraryCompletedListItem extends StatelessWidget {
       ),
     );
   }
-}
-
-String _formatCount(double n) {
-  String trim(double v) =>
-      v.toStringAsFixed(1).replaceAll(RegExp(r'\.0$'), '');
-  if (n >= 1000000) return '${trim(n / 1000000)}M';
-  if (n >= 1000) return '${trim(n / 1000)}K';
-  return n.toInt().toString();
 }

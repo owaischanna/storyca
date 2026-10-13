@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:storryca/src/core/network/api_client.dart';
 
 class ModerationRepository {
@@ -41,6 +42,53 @@ class ModerationRepository {
             ? 'Muted. Their new stories will stay out of your feed.'
             : 'Unmuted. Their stories can show in your feed again.');
     return (data['muted'] as bool? ?? mute, message);
+  }
+
+  /// Bumped after a block or unblock, so screens kept alive in the bottom-nav
+  /// stack (Home, Discover, Rank) re-fetch — the server already leaves a
+  /// blocked account's content out of every response.
+  final ValueNotifier<int> blocksChanged = ValueNotifier(0);
+
+  Future<bool> isBlocked(int userId, String token) async {
+    final data =
+        await _client.get(
+              '/moderation/block',
+              query: {'user_id': userId},
+              token: token,
+            )
+            as Map<String, dynamic>;
+    return data['blocked'] as bool? ?? false;
+  }
+
+  /// Returns the server's `blocked` and message — repaint from these.
+  /// Blocking twice is a 200, not an error.
+  Future<(bool, String)> setBlocked(
+    int userId,
+    bool block,
+    String token,
+  ) async {
+    final body = block
+        ? await _client.post(
+            '/moderation/block',
+            body: {'user_id': userId},
+            token: token,
+            includeEnvelope: true,
+          )
+        : await _client.delete(
+            '/moderation/block',
+            body: {'user_id': userId},
+            token: token,
+          );
+    // delete() returns only `data`; post with includeEnvelope returns all.
+    final map = body as Map<String, dynamic>;
+    final data = (map['data'] as Map<String, dynamic>?) ?? map;
+    final message =
+        map['message'] as String? ??
+        (block
+            ? 'Blocked. You will not see them on StorryCa again.'
+            : 'Unblocked. You can see them on StorryCa again.');
+    blocksChanged.value++;
+    return (data['blocked'] as bool? ?? block, message);
   }
 
   /// `{key: label}` — send the key back as `reason`, show the label.

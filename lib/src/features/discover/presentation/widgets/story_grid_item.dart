@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:storryca/src/core/utils/compact_count.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:remixicon/remixicon.dart';
@@ -57,7 +58,7 @@ class StoryGridItem extends StatelessWidget {
                   crossAxisAlignment: WrapCrossAlignment.center,
                   children: [
                     Text(
-                      '${reads.toInt()} Reads',
+                      '${compactCount(reads)} Reads',
                       style: TextStyle(
                         fontSize: 12,
                         color: Color.fromRGBO(195, 132, 255, 0.5),

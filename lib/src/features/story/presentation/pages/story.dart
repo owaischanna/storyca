@@ -2,6 +2,7 @@ import 'package:storryca/src/core/widgets/branded_refresh_indicator.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:storryca/src/core/utils/compact_count.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:remixicon/remixicon.dart';
@@ -12,6 +13,7 @@ import 'package:storryca/src/core/network/api.dart';
 import 'package:storryca/src/core/network/api_client.dart';
 import 'package:storryca/src/core/network/image_url.dart';
 import 'package:storryca/src/core/network/models/author_api_model.dart';
+import 'package:storryca/src/core/network/models/follow_api_model.dart';
 import 'package:storryca/src/core/network/models/story_api_model.dart';
 import 'package:storryca/src/core/widgets/app_image.dart';
 import 'package:storryca/src/core/widgets/app_snackbar.dart';
@@ -19,6 +21,7 @@ import 'package:storryca/src/core/widgets/moderation_actions.dart';
 import 'package:storryca/src/core/widgets/error_state.dart';
 import 'package:storryca/src/core/widgets/gradient_button.dart';
 import 'package:storryca/src/core/widgets/loading_state.dart';
+import 'package:storryca/src/core/widgets/sign_in_redirect.dart';
 import 'package:storryca/src/features/story/presentation/widgets/story_chapters_tab.dart';
 import 'package:storryca/src/features/story/presentation/widgets/story_recommended_tab.dart';
 import 'package:storryca/src/features/story/presentation/widgets/story_reviews_tab.dart';
@@ -114,6 +117,12 @@ class _StoryState extends State<Story> {
   num? _bookPrice;
   bool _unlocking = false;
   bool _authorMuted = false;
+  bool _authorBlocked = false;
+
+  /// The author card's Follow button and follower count, straight from
+  /// `/follow/state` — `isSelf` hides the button on the reader's own story.
+  FollowStateApiModel? _authorFollow;
+  bool _followUpdating = false;
 
   @override
   void initState() {
@@ -158,6 +167,17 @@ class _StoryState extends State<Story> {
         ModerationActions.isMuted(story.authorId).then((muted) {
           if (mounted) setState(() => _authorMuted = muted);
         });
+        ModerationActions.isBlocked(story.authorId).then((blocked) {
+          if (mounted) setState(() => _authorBlocked = blocked);
+        });
+        followRepository
+            .state(story.authorId, token: token)
+            .then((state) {
+              if (mounted) setState(() => _authorFollow = state);
+            })
+            .catchError((_) {
+              // The card still shows the author's own follower count.
+            });
       }
       await _loadUnlockState(token);
       // Fire-and-forget: never block showing the story on this, and the
@@ -179,22 +199,51 @@ class _StoryState extends State<Story> {
     final token = _token;
     final story = _story;
     if (token == null) {
-      AppSnackbar.warning(context, 'Sign in to save stories to your library.');
+      goToSignIn(context);
       return;
     }
+    // Taps while a request is in flight are dropped, so rapid tapping can't
+    // race two writes against each other.
     if (story == null || _libraryUpdating) return;
     setState(() => _libraryUpdating = true);
     try {
-      if (isInLibary) {
-        await libraryRepository.unsave(story.id, token);
-      } else {
-        await libraryRepository.save(story.id, token);
-      }
-      setState(() => isInLibary = !isInLibary);
+      final saved = isInLibary
+          ? await libraryRepository.unsave(story.id, token)
+          : await libraryRepository.save(story.id, token);
+      // Repaint from the server's answer, not from what was asked.
+      if (mounted) setState(() => isInLibary = saved);
     } on ApiException catch (e) {
-      if (mounted) AppSnackbar.error(context, e.message);
+      if (mounted && !redirectIfSignedOut(context, e)) {
+        AppSnackbar.error(context, e.message);
+      }
     } finally {
       if (mounted) setState(() => _libraryUpdating = false);
+    }
+  }
+
+  Future<void> _toggleFollowAuthor() async {
+    final token = _token;
+    final current = _authorFollow;
+    if (token == null) {
+      goToSignIn(context);
+      return;
+    }
+    if (current == null || _followUpdating) return;
+    setState(() => _followUpdating = true);
+    try {
+      // Counts and is_following come back in the response — no local maths.
+      final state = current.isFollowing
+          ? await followRepository.unfollow(current.userId, token)
+          : await followRepository.follow(current.userId, token);
+      if (mounted) setState(() => _authorFollow = state);
+    } on ApiException catch (e) {
+      // Block refusals are shown exactly as sent — they're worded not to
+      // reveal a block.
+      if (mounted && !redirectIfSignedOut(context, e)) {
+        AppSnackbar.error(context, e.message);
+      }
+    } finally {
+      if (mounted) setState(() => _followUpdating = false);
     }
   }
 
@@ -343,8 +392,25 @@ class _StoryState extends State<Story> {
                                   targetType: 'story',
                                   targetId: story.id,
                                 );
+                              } else if (value == 'block' &&
+                                  story.authorId != 0) {
+                                final blocked =
+                                    await ModerationActions.toggleBlock(
+                                      context,
+                                      userId: story.authorId,
+                                      currentlyBlocked: _authorBlocked,
+                                    );
+                                if (blocked == null || !context.mounted) return;
+                                setState(() => _authorBlocked = blocked);
+                                // The reader chose not to see this author —
+                                // leave their book (the feeds behind re-fetch
+                                // without it). Unblocking just reloads.
+                                if (blocked && context.canPop()) {
+                                  context.pop();
+                                } else {
+                                  _load();
+                                }
                               }
-                              // 'block' stays inert until blocking is built.
                             },
                             itemBuilder: (context) {
                               return [
@@ -421,6 +487,8 @@ class _StoryState extends State<Story> {
                                     ],
                                   ),
                                 ),
+                                // Not offered on the reader's own story.
+                                if (_authorFollow?.isSelf != true)
                                 PopupMenuItem(
                                   height: 40,
                                   value: 'block',
@@ -435,7 +503,7 @@ class _StoryState extends State<Story> {
                                         size: 16,
                                       ),
                                       Text(
-                                        'Block Author',
+                                        _authorBlocked ? 'Unblock Author' : 'Block Author',
                                         style: TextStyle(
                                           color: Color(0xffC23B3B),
                                           fontSize: 14,
@@ -635,7 +703,7 @@ class _StoryState extends State<Story> {
                           ),
                           Column(
                             children: [
-                              Text('${story.views}', style: whiteF14TS),
+                              Text(compactCount(story.views), style: whiteF14TS),
                               Text('Views', style: defaultTextStyle),
                             ],
                           ),
@@ -662,7 +730,7 @@ class _StoryState extends State<Story> {
                           ),
                           Column(
                             children: [
-                              Text('${story.reads}', style: whiteF14TS),
+                              Text(compactCount(story.reads), style: whiteF14TS),
                               Text('Reads', style: defaultTextStyle),
                             ],
                           ),
@@ -933,37 +1001,54 @@ class _StoryState extends State<Story> {
                                 spacing: 8,
                                 crossAxisAlignment: CrossAxisAlignment.end,
                                 children: [
-                                  Container(
-                                    padding: EdgeInsets.symmetric(
-                                      vertical: 5,
-                                      horizontal: 10,
-                                    ),
-                                    decoration: BoxDecoration(
-                                      border: Border.all(
-                                        width: 0.5,
-                                        color: Color(secondaryCOLR),
-                                      ),
-                                      borderRadius: BorderRadius.circular(3),
-                                    ),
-                                    child: Row(
-                                      spacing: 4,
-                                      children: [
-                                        Icon(
-                                          Remix.group_line,
-                                          color: Color(secondaryCOLR),
-                                          size: 16,
+                                  // Hidden on the reader's own story — the
+                                  // server says so via is_self.
+                                  if (_authorFollow?.isSelf != true)
+                                    GestureDetector(
+                                      onTap: _toggleFollowAuthor,
+                                      child: Container(
+                                        padding: EdgeInsets.symmetric(
+                                          vertical: 5,
+                                          horizontal: 10,
                                         ),
-                                        Text('Follow', style: secondaryF12TS),
-                                      ],
+                                        decoration: BoxDecoration(
+                                          border: Border.all(
+                                            width: 0.5,
+                                            color: Color(secondaryCOLR),
+                                          ),
+                                          borderRadius: BorderRadius.circular(
+                                            3,
+                                          ),
+                                        ),
+                                        child: Row(
+                                          spacing: 4,
+                                          children: [
+                                            Icon(
+                                              (_authorFollow?.isFollowing ??
+                                                      false)
+                                                  ? Remix.user_follow_line
+                                                  : Remix.group_line,
+                                              color: Color(secondaryCOLR),
+                                              size: 16,
+                                            ),
+                                            Text(
+                                              (_authorFollow?.isFollowing ??
+                                                      false)
+                                                  ? 'Following'
+                                                  : 'Follow',
+                                              style: secondaryF12TS,
+                                            ),
+                                          ],
+                                        ),
+                                      ),
                                     ),
-                                  ),
                                   Row(
                                     spacing: 4,
                                     children: [
                                       Column(
                                         children: [
                                           Text(
-                                            '${author.followers}',
+                                            '${_authorFollow?.followers ?? author.followers}',
                                             style: whiteF14TS,
                                           ),
                                           Text(

@@ -22,6 +22,11 @@ class StoryItemTypes {
   /// carry progress (e.g. the catalogue, Saved).
   final int? progressChapterId;
 
+  /// Reads inside the request's time window (`period_reads`), e.g. Trending's
+  /// 3 days. Only the Ranking screen's Today / Week / Month tabs show this;
+  /// every other card shows the lifetime [reads].
+  final double? periodReads;
+
   StoryItemTypes({
     required this.title,
     required this.image,
@@ -41,5 +46,6 @@ class StoryItemTypes {
     required this.views,
     required this.status,
     this.progressChapterId,
+    this.periodReads,
   });
 }

@@ -6,6 +6,7 @@ import 'package:storryca/src/core/constants/text_styyle.dart';
 import 'package:storryca/src/core/network/api.dart';
 import 'package:storryca/src/core/network/api_client.dart';
 import 'package:storryca/src/core/widgets/app_snackbar.dart';
+import 'package:storryca/src/core/widgets/sign_in_redirect.dart';
 
 class StoryActionsBTMS extends StatefulWidget {
   const StoryActionsBTMS({
@@ -42,7 +43,8 @@ class _StoryActionsBTMSState extends State<StoryActionsBTMS> {
     final token = await authService.getToken();
     if (!mounted) return;
     if (token == null) {
-      AppSnackbar.warning(context, "Sign in to manage your story.");
+      context.pop();
+      goToSignIn(context);
       return;
     }
     setState(() => _busy = true);
@@ -53,25 +55,40 @@ class _StoryActionsBTMSState extends State<StoryActionsBTMS> {
       AppSnackbar.success(context, message);
       widget.onChanged?.call();
     } on ApiException catch (e) {
-      // e.g. 422 "A story needs 20 published chapters…", or 403 on a
-      // non-draft delete — the server message reads correctly as-is. Close
-      // the sheet first: a snackbar raised under it would be hidden.
+      // Close the sheet first: a snackbar raised under it would be hidden.
       if (!mounted) return;
       context.pop();
-      AppSnackbar.error(context, e.message);
+      if (redirectIfSignedOut(context, e)) return;
+      AppSnackbar.error(context, _refusalMessage(e));
     } finally {
       if (mounted) setState(() => _busy = false);
     }
   }
 
+  /// The too-few-chapters 422 is rebuilt from `data.chapters` /
+  /// `data.required` — counted live server-side — rather than parsing the
+  /// sentence. Anything else (403 "only your own story", 403 on a non-draft
+  /// delete) reads correctly as sent.
+  String _refusalMessage(ApiException e) {
+    final chapters = e.data?['chapters'];
+    final required = e.data?['required'];
+    if (e.isUnprocessable && chapters is int && required is int) {
+      final has = chapters == 1 ? "1 published chapter" : "$chapters published chapters";
+      return "Mark as completed needs $required published chapters. "
+          "This story has $has — drafts and chapters in review don't count.";
+    }
+    return e.message;
+  }
+
   void _toggleCompleted() => _run((token) async {
+    // Sent lowercase; the answer comes back capitalised — compare loosely.
     final state = await storiesRepository.setStoryState(
       widget.storyId,
       _isCompleted ? "ongoing" : "completed",
       token,
     );
-    return state == "Completed"
-        ? "Story marked as completed."
+    return state.toLowerCase() == "completed"
+        ? "Story marked as completed. You can set it back to ongoing any time."
         : "Story set back to ongoing.";
   });
 

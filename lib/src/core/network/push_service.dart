@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
@@ -7,7 +8,9 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:go_router/go_router.dart';
+import 'package:http/http.dart' as http;
 import 'package:package_info_plus/package_info_plus.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:storryca/src/core/network/api_client.dart';
 import 'package:storryca/src/core/network/auth_service.dart';
@@ -45,29 +48,134 @@ Future<void> _initLocal({
       ?.createNotificationChannel(_channel);
 }
 
+NotificationDetails _details({
+  StyleInformation? style,
+  AndroidBitmap<Object>? largeIcon,
+}) => NotificationDetails(
+  android: AndroidNotificationDetails(
+    _channel.id,
+    _channel.name,
+    channelDescription: _channel.description,
+    importance: Importance.high,
+    priority: Priority.high,
+    icon: _statusIcon,
+    styleInformation: style,
+    largeIcon: largeIcon,
+    // The cover arrives as an update to the same notification — it must not
+    // sound or pop up a second time.
+    onlyAlertOnce: true,
+  ),
+);
+
 /// Android doesn't draw a push itself while the app is in the foreground (or
 /// for a data-only message), so those are drawn here. The message data rides
 /// along as the payload so a tap can deep link like a system one.
+///
+/// The plain title-and-body notification goes up straight away; the cover
+/// (new-release pushes carry `notification.image`) is fetched afterwards and,
+/// if it arrives in time, replaces it in place. So a slow, failed or missing
+/// image can only ever cost the picture — never the notification.
 Future<void> _show(RemoteMessage message) async {
   final title = message.notification?.title ?? message.data['title'] as String?;
   final body = message.notification?.body ?? message.data['body'] as String?;
   if (title == null && body == null) return;
-  await _local.show(
-    DateTime.now().millisecondsSinceEpoch.remainder(1 << 31),
-    title,
-    body,
-    NotificationDetails(
-      android: AndroidNotificationDetails(
-        _channel.id,
-        _channel.name,
-        channelDescription: _channel.description,
-        importance: Importance.high,
-        priority: Priority.high,
-        icon: _statusIcon,
+  final id = DateTime.now().millisecondsSinceEpoch.remainder(1 << 31);
+  final payload = jsonEncode(message.data);
+  await _local.show(id, title, body, _details(), payload: payload);
+
+  final imageUrl =
+      message.notification?.android?.imageUrl ??
+      message.data['image'] as String?;
+  if (imageUrl == null || imageUrl.isEmpty) return;
+  final file = await _downloadImage(imageUrl);
+  if (file == null) return;
+  try {
+    // Tapped or swiped away while the cover downloaded — don't bring it back.
+    final active = await _local
+        .resolvePlatformSpecificImplementation<
+          AndroidFlutterLocalNotificationsPlugin
+        >()
+        ?.getActiveNotifications();
+    if (active != null && !active.any((n) => n.id == id)) return;
+    final cover = FilePathAndroidBitmap(file.path);
+    await _local.show(
+      id,
+      title,
+      body,
+      _details(
+        // largeIcon too, so the collapsed notification shows the cover.
+        largeIcon: cover,
+        style: BigPictureStyleInformation(
+          cover,
+          largeIcon: cover,
+          hideExpandedLargeIcon: true,
+          contentTitle: title,
+          summaryText: body,
+        ),
       ),
-    ),
-    payload: jsonEncode(message.data),
-  );
+      payload: payload,
+    );
+  } catch (_) {
+    // The plain notification is already up.
+  } finally {
+    // The bitmap is decoded when the notification is posted, so the file
+    // isn't needed after this.
+    try {
+      await file.delete();
+    } catch (_) {}
+  }
+}
+
+const Duration _imageTimeout = Duration(seconds: 3);
+const int _maxImageBytes = 5 * 1024 * 1024;
+
+/// Android's notification styles can't take a URL, only a file. Null on any
+/// failure — a non-https URL, a timeout, a non-image or oversized response.
+Future<File?> _downloadImage(String url) async {
+  final uri = Uri.tryParse(url);
+  if (uri == null || uri.scheme != 'https') return null;
+  try {
+    final dir = Directory(
+      '${(await getTemporaryDirectory()).path}/push_images',
+    );
+    await dir.create(recursive: true);
+    await _sweepOldImages(dir);
+    final started = DateTime.now();
+    final response = await http.get(uri).timeout(_imageTimeout);
+    final type = response.headers['content-type'] ?? '';
+    if (response.statusCode != 200 ||
+        !type.startsWith('image/') ||
+        response.bodyBytes.isEmpty ||
+        response.bodyBytes.length > _maxImageBytes) {
+      if (kDebugMode) {
+        debugPrint('Push: cover rejected (${response.statusCode}, $type)');
+      }
+      return null;
+    }
+    final file = File('${dir.path}/${DateTime.now().microsecondsSinceEpoch}');
+    await file.writeAsBytes(response.bodyBytes);
+    if (kDebugMode) {
+      final ms = DateTime.now().difference(started).inMilliseconds;
+      debugPrint('Push: cover ready in ${ms}ms');
+    }
+    return file;
+  } catch (e) {
+    if (kDebugMode) debugPrint('Push: no cover (${e.runtimeType})');
+    return null;
+  }
+}
+
+/// Covers are deleted once posted; this only catches leftovers from a
+/// process that died mid-download.
+Future<void> _sweepOldImages(Directory dir) async {
+  final cutoff = DateTime.now().subtract(const Duration(hours: 1));
+  try {
+    await for (final entry in dir.list()) {
+      if (entry is File && (await entry.lastModified()).isBefore(cutoff)) {
+        await entry.delete();
+      }
+    }
+  } catch (_) {}
 }
 
 /// Runs in its own isolate while the app is in the background or closed.
@@ -95,6 +203,14 @@ String routeForPush(Map<String, dynamic> data) {
           'profile' || 'user' || 'author' => '/author-profile/$id',
           _ => null,
         };
+  // Wallet pushes carry no id. A withdrawal moving (processing / paid /
+  // failed) opens the author's earnings; anything else the wallet.
+  if ('${data['type']}'.toLowerCase() == 'wallet') {
+    final withdrawal = '${data['withdrawal']}'.toLowerCase();
+    return withdrawal == 'true' || withdrawal == '1'
+        ? '/author-earnings'
+        : '/transaction-history';
+  }
   return route ?? '/inbox';
 }
 
@@ -155,10 +271,7 @@ class PushService {
     _localReady.complete();
 
     // Foreground.
-    FirebaseMessaging.onMessage.listen((message) {
-      _show(message);
-      _changed();
-    });
+    FirebaseMessaging.onMessage.listen(handleForegroundMessage);
     // Background → tapped.
     FirebaseMessaging.onMessageOpenedApp.listen((message) {
       _changed();
@@ -179,6 +292,13 @@ class PushService {
       unawaited(sync());
       unawaited(askOnce());
     }
+  }
+
+  /// What a push does while the app is open: draw it (Android won't) and
+  /// refresh the Inbox and badge.
+  void handleForegroundMessage(RemoteMessage message) {
+    _show(message);
+    _changed();
   }
 
   Future<String?> _resolveLaunchRoute() async {

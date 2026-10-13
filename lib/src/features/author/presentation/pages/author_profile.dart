@@ -4,7 +4,6 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:remixicon/remixicon.dart';
 import 'package:storryca/src/core/constants/colors.const.dart';
 import 'package:storryca/src/core/constants/images.const.dart';
-import 'package:storryca/src/core/constants/text_styyle.dart';
 import 'package:storryca/src/core/network/api.dart';
 import 'package:storryca/src/core/network/api_client.dart';
 import 'package:storryca/src/core/network/image_url.dart';
@@ -13,6 +12,7 @@ import 'package:storryca/src/core/network/models/follow_api_model.dart';
 import 'package:storryca/src/core/network/models/pagination.dart';
 import 'package:storryca/src/core/widgets/app_image.dart';
 import 'package:storryca/src/core/widgets/app_snackbar.dart';
+import 'package:storryca/src/core/widgets/sign_in_redirect.dart';
 import 'package:storryca/src/core/widgets/moderation_actions.dart';
 import 'package:storryca/src/core/widgets/branded_refresh_indicator.dart';
 import 'package:storryca/src/core/widgets/error_state.dart';
@@ -39,12 +39,16 @@ class _AuthorProfileState extends State<AuthorProfile> {
   FollowStateApiModel? _followState;
   bool _followUpdating = false;
   bool _muted = false;
+  bool _blocked = false;
 
   @override
   void initState() {
     super.initState();
     ModerationActions.isMuted(widget.id).then((muted) {
       if (mounted) setState(() => _muted = muted);
+    });
+    ModerationActions.isBlocked(widget.id).then((blocked) {
+      if (mounted) setState(() => _blocked = blocked);
     });
     _load();
   }
@@ -73,7 +77,7 @@ class _AuthorProfileState extends State<AuthorProfile> {
   Future<void> _toggleFollow() async {
     final token = _token;
     if (token == null) {
-      AppSnackbar.warning(context, 'Sign in to follow authors.');
+      goToSignIn(context);
       return;
     }
     final following = _followState?.isFollowing ?? false;
@@ -84,7 +88,9 @@ class _AuthorProfileState extends State<AuthorProfile> {
           : await followRepository.follow(widget.id, token);
       setState(() => _followState = state);
     } on ApiException catch (e) {
-      if (mounted) AppSnackbar.error(context, e.message);
+      if (mounted && !redirectIfSignedOut(context, e)) {
+        AppSnackbar.error(context, e.message);
+      }
     } finally {
       if (mounted) setState(() => _followUpdating = false);
     }
@@ -189,7 +195,18 @@ class _AuthorProfileState extends State<AuthorProfile> {
                                         targetId: widget.id,
                                       );
                                     }
-                                    // 'block' stays inert until blocking is built.
+                                    if (value == 'block' && context.mounted) {
+                                      final blocked = await ModerationActions.toggleBlock(
+                                        context,
+                                        userId: widget.id,
+                                        currentlyBlocked: _blocked,
+                                      );
+                                      if (blocked != null && mounted) {
+                                        setState(() => _blocked = blocked);
+                                        // Follow state is dropped server-side; reload counts too.
+                                        _load();
+                                      }
+                                    }
                                   },
                                   itemBuilder: (context) {
                                     return [
@@ -262,6 +279,7 @@ class _AuthorProfileState extends State<AuthorProfile> {
                                           ],
                                         ),
                                       ),
+                                      if (_followState?.isSelf != true)
                                       PopupMenuItem(
                                         height: 40,
                                         value: 'block',
@@ -276,7 +294,7 @@ class _AuthorProfileState extends State<AuthorProfile> {
                                               size: 16,
                                             ),
                                             Text(
-                                              'Block User',
+                                              _blocked ? 'Unblock User' : 'Block User',
                                               style: TextStyle(
                                                 color: Color(0xffC23B3B),
                                                 fontSize: 14,
@@ -590,53 +608,6 @@ class _AuthorProfileState extends State<AuthorProfile> {
                     ],
                   ),
                 ],
-              ),
-            ),
-
-            // AWARDS
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: Container(
-                padding: EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  border: Border.all(
-                    width: 1,
-                    color: Color.fromRGBO(181, 77, 232, 0.1),
-                  ),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Row(
-                  spacing: 8,
-                  mainAxisAlignment: MainAxisAlignment.spaceAround,
-                  children: [
-                    Row(
-                      spacing: 8,
-                      children: [
-                        Image.asset(trophyIMG, width: 35),
-                        Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text('Storyteller of the Month', style: whiteF14TS),
-                            Text('May 2026', style: defaultTextStyle),
-                          ],
-                        ),
-                      ],
-                    ),
-                    SizedBox(
-                      height: 50,
-                      child: VerticalDivider(
-                        color: Color.fromRGBO(181, 77, 232, 0.1),
-                      ),
-                    ),
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text('Top 1% Author', style: secondaryF14TS),
-                        Text('Based on reads', style: defaultTextStyle),
-                      ],
-                    ),
-                  ],
-                ),
               ),
             ),
 

@@ -7,6 +7,7 @@ import 'package:storryca/src/core/network/api.dart';
 import 'package:storryca/src/core/network/api_client.dart';
 import 'package:storryca/src/core/network/models/follow_api_model.dart';
 import 'package:storryca/src/core/widgets/app_snackbar.dart';
+import 'package:storryca/src/core/widgets/sign_in_redirect.dart';
 import 'package:storryca/src/core/widgets/error_state.dart';
 import 'package:storryca/src/core/widgets/loading_state.dart';
 import 'package:storryca/src/features/network/presentation/widgets/network_tab.dart';
@@ -135,7 +136,7 @@ class _NetworkState extends State<Network> {
   Future<void> _toggleFollow(FollowUserApiModel user, List<FollowUserApiModel> list) async {
     final token = _token;
     if (token == null) {
-      AppSnackbar.warning(context, 'Sign in to follow authors.');
+      goToSignIn(context);
       return;
     }
     setState(() => _updatingIds.add(user.id));
@@ -156,12 +157,14 @@ class _NetworkState extends State<Network> {
             followedAt: user.followedAt,
             followers: state.followers,
             isFollowing: state.isFollowing,
-            isSelf: user.isSelf,
+            isSelf: state.isSelf,
           );
         });
       }
     } on ApiException catch (e) {
-      if (mounted) AppSnackbar.error(context, e.message);
+      if (mounted && !redirectIfSignedOut(context, e)) {
+        AppSnackbar.error(context, e.message);
+      }
     } finally {
       if (mounted) setState(() => _updatingIds.remove(user.id));
     }

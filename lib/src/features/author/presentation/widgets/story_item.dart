@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:storryca/src/core/utils/compact_count.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:remixicon/remixicon.dart';
@@ -144,7 +145,7 @@ class StoryItem extends StatelessWidget {
                                   size: 12,
                                   color: Color(primaryTextCOLR),
                                 ),
-                                Text(views, style: defaultTextStyle),
+                                Text(compactCountText(views), style: defaultTextStyle),
                               ],
                             ),
                             Row(

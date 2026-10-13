@@ -99,6 +99,14 @@ class _RankState extends State<Rank> {
     super.initState();
     _loadGenres();
     _load();
+    // A blocked account's stories leave the server's responses — re-fetch.
+    moderationRepository.blocksChanged.addListener(_load);
+  }
+
+  @override
+  void dispose() {
+    moderationRepository.blocksChanged.removeListener(_load);
+    super.dispose();
   }
 
   Future<void> _loadGenres() async {
@@ -118,6 +126,12 @@ class _RankState extends State<Rank> {
     'This Month' => 'month',
     _ => null, // All Time
   };
+
+  /// On Today / Week / Month the list is ordered by reads inside that
+  /// window, so that's the number shown — the lifetime total would
+  /// contradict the order. All Time shows the lifetime total.
+  double _rankReads(StoryItemTypes item) =>
+      _period != null ? (item.periodReads ?? item.reads) : item.reads;
 
   Future<void> _load() async {
     setState(() => _error = null);
@@ -361,20 +375,20 @@ class _RankState extends State<Rank> {
                               id: _items![1].id,
                               title: _items![1].title,
                               image: _items![1].image,
-                              reads: _items![1].reads,
+                              reads: _rankReads(_items![1]),
                             ),
                           RankItem1(
                             id: _items![0].id,
                             title: _items![0].title,
                             image: _items![0].image,
-                            reads: _items![0].reads,
+                            reads: _rankReads(_items![0]),
                           ),
                           if (_items!.length > 2)
                             RankItem3(
                               id: _items![2].id,
                               title: _items![2].title,
                               image: _items![2].image,
-                              reads: _items![2].reads,
+                              reads: _rankReads(_items![2]),
                             ),
                         ],
                       ),
@@ -397,9 +411,8 @@ class _RankState extends State<Rank> {
                             title: item.title,
                             author: item.author,
                             category: item.category,
-                            reads: item.reads,
+                            reads: _rankReads(item),
                             rating: item.rating,
-                            isSaved: item.isSaved,
                           );
                         }),
                       ],

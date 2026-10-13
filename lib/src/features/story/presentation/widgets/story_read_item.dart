@@ -9,11 +9,19 @@ class StoryReadItem extends StatelessWidget {
     required this.chapter,
     required this.title,
     required this.content,
+    this.fontSize = 19,
+    this.audio,
   });
+
+  /// The "Listen to this chapter" bar, shown above the chapter text.
+  final Widget? audio;
 
   final String chapter;
   final String title;
   final String content;
+
+  /// The chapter text size — the reader's own choice from "Text Size".
+  final double fontSize;
 
   @override
   Widget build(BuildContext context) {
@@ -43,10 +51,11 @@ class StoryReadItem extends StatelessWidget {
             textAlign: TextAlign.center,
             style: GoogleFonts.playfair(fontSize: 18, color: Colors.white),
           ),
+          ?audio,
           Text(
             content,
             style: GoogleFonts.playfair(
-              fontSize: 19,
+              fontSize: fontSize,
               color: Colors.white,
               height: 1.6,
             ),

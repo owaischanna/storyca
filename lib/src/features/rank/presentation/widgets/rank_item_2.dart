@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:storryca/src/core/utils/compact_count.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:remixicon/remixicon.dart';
@@ -105,7 +106,7 @@ class RankItem2 extends StatelessWidget {
                                   text: TextSpan(
                                     children: [
                                       TextSpan(
-                                        text: '${reads}K',
+                                        text: compactCount(reads),
                                         style: TextStyle(
                                           fontSize: 10,
                                           color: Color(0xffC384FF),

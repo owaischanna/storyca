@@ -106,6 +106,63 @@ class _AuthorCenterState extends State<AuthorCenter> {
                   ),
                 ),
 
+                // EARNINGS
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  child: GestureDetector(
+                    onTap: () => context.push('/author-earnings'),
+                    child: Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        border: Border.all(
+                          width: 1,
+                          color: const Color.fromRGBO(181, 77, 232, 0.3),
+                        ),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: Row(
+                        spacing: 12,
+                        children: [
+                          Container(
+                            width: 40,
+                            height: 40,
+                            decoration: BoxDecoration(
+                              color: const Color.fromRGBO(145, 16, 222, 0.1),
+                              borderRadius: BorderRadius.circular(40),
+                            ),
+                            child: ShaderMask(
+                              shaderCallback: (bounds) =>
+                                  defaultGradientTTB.createShader(bounds),
+                              child: const Icon(
+                                Remix.money_dollar_circle_line,
+                                color: Colors.white,
+                              ),
+                            ),
+                          ),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              spacing: 2,
+                              children: [
+                                Text('Author Earnings', style: whiteF14TS),
+                                Text(
+                                  'See what your stories earn and withdraw it',
+                                  style: defaultTextStyle10,
+                                ),
+                              ],
+                            ),
+                          ),
+                          const Icon(
+                            Remix.arrow_right_s_line,
+                            color: Colors.white,
+                            size: 20,
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+
                 // ITEMS
                 Padding(
                   padding: const EdgeInsets.symmetric(

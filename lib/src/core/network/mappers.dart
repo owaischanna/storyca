@@ -11,7 +11,10 @@ StoryItemTypes storyItemFromApi(StoryApiModel story) => StoryItemTypes(
   id: story.id,
   title: story.title,
   image: coverUrl(story.cover, fallbackAsset: noStoryIMG),
-  reads: (story.periodReads ?? story.reads).toDouble(),
+  // Lifetime total on every card; the windowed figure is kept separately for
+  // the Ranking tabs that order by it.
+  reads: story.reads.toDouble(),
+  periodReads: story.periodReads?.toDouble(),
   comments: 0,
   rating: story.ratings.round(),
   ratingCount: 0,

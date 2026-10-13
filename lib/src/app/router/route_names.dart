@@ -55,4 +55,6 @@ class RouteNames {
   static const chapters = '/chapters';
   static const storyDetails = '/story-details';
   static const write = '/write';
+  static const authorEarnings = '/author-earnings';
+  static const bankDetails = '/author-earnings/bank';
 }

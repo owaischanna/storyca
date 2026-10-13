@@ -15,7 +15,13 @@ class ReadModeAppbar extends StatelessWidget implements PreferredSizeWidget {
     this.authorMuted = false,
     this.onMute,
     this.onReport,
+    this.inLibrary = false,
+    this.onToggleLibrary,
+    this.onTextSize,
   });
+
+  /// Opens the chapter text-size control.
+  final VoidCallback? onTextSize;
 
   final String title;
   final String author;
@@ -23,6 +29,10 @@ class ReadModeAppbar extends StatelessWidget implements PreferredSizeWidget {
   final bool authorMuted;
   final VoidCallback? onMute;
   final VoidCallback? onReport;
+
+  /// Saved-to-library state (the bookmark), read from the server on open.
+  final bool inLibrary;
+  final VoidCallback? onToggleLibrary;
 
   final GlobalKey<ScaffoldState> scaffoldKey;
   final void Function() toggleAppbar;
@@ -92,6 +102,8 @@ class ReadModeAppbar extends StatelessWidget implements PreferredSizeWidget {
                   onSelected: (value) {
                     if (value == 'mute') onMute?.call();
                     if (value == 'report') onReport?.call();
+                    if (value == 'library') onToggleLibrary?.call();
+                    if (value == 'text-size') onTextSize?.call();
                   },
                   itemBuilder: (context) {
                     return [
@@ -120,18 +132,42 @@ class ReadModeAppbar extends StatelessWidget implements PreferredSizeWidget {
                       ),
                       PopupMenuItem(
                         height: 40,
-                        value: 'share',
+                        value: 'text-size',
                         child: Row(
                           crossAxisAlignment: CrossAxisAlignment.center,
                           spacing: 8,
                           children: [
                             Icon(
-                              Remix.bookmark_line,
+                              Remix.font_size,
                               color: Colors.white,
                               size: 16,
                             ),
                             Text(
-                              'Add to Libary',
+                              'Text Size',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 14,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      PopupMenuItem(
+                        height: 40,
+                        value: 'library',
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.center,
+                          spacing: 8,
+                          children: [
+                            Icon(
+                              inLibrary
+                                  ? Remix.bookmark_fill
+                                  : Remix.bookmark_line,
+                              color: Colors.white,
+                              size: 16,
+                            ),
+                            Text(
+                              inLibrary ? 'Saved to Library' : 'Add to Library',
                               style: TextStyle(
                                 color: Colors.white,
                                 fontSize: 14,

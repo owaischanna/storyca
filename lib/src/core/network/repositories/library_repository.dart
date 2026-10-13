@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:storryca/src/core/network/api_client.dart';
 import 'package:storryca/src/core/network/mappers.dart';
 import 'package:storryca/src/core/network/models/story_api_model.dart';
@@ -11,6 +12,41 @@ class LibraryRepository {
   /// Bumped after a save/unsave anywhere, so the Library tab (kept alive in
   /// the bottom-nav stack) reloads its shelves instead of going stale.
   final ValueNotifier<int> changed = ValueNotifier(0);
+
+  /// Ids of every story on the signed-in reader's Saved shelf — what list
+  /// cards (Rank, Search…) paint their bookmark from, so a list of twenty
+  /// doesn't need twenty `/saved/check` calls. Kept in step by [save] and
+  /// [unsave]; empty when signed out.
+  final ValueNotifier<Set<int>> savedIds = ValueNotifier(const {});
+  String? _savedIdsFor;
+  Future<void>? _savedIdsLoading;
+
+  /// Loads [savedIds] once per sign-in (a new token reloads it; no token
+  /// clears it). Safe to call from every card — concurrent calls share one
+  /// request.
+  Future<void> ensureSavedIds(String? token) {
+    if (token == null) {
+      _savedIdsFor = null;
+      if (savedIds.value.isNotEmpty) savedIds.value = const {};
+      return Future.value();
+    }
+    if (_savedIdsFor == token) return _savedIdsLoading ?? Future.value();
+    _savedIdsFor = token;
+    return _savedIdsLoading = () async {
+      try {
+        final shelf = await saved(token);
+        savedIds.value = {for (final s in shelf) s.id};
+      } on ApiException {
+        _savedIdsFor = null; // retry on the next call
+      }
+    }();
+  }
+
+  void _markSaved(int storyId, bool isSaved) {
+    final next = {...savedIds.value};
+    isSaved ? next.add(storyId) : next.remove(storyId);
+    savedIds.value = next;
+  }
 
   static const int _pageSize = 20;
 
@@ -104,8 +140,10 @@ class LibraryRepository {
               token: token,
             )
             as Map<String, dynamic>;
+    final isSaved = data['saved'] as bool? ?? true;
+    _markSaved(storyId, isSaved);
     changed.value++;
-    return data['saved'] as bool? ?? true;
+    return isSaved;
   }
 
   /// Returns the server's `saved`. Removing twice is a 200 with
@@ -118,8 +156,10 @@ class LibraryRepository {
               token: token,
             )
             as Map<String, dynamic>;
+    final isSaved = data['saved'] as bool? ?? false;
+    _markSaved(storyId, isSaved);
     changed.value++;
-    return data['saved'] as bool? ?? false;
+    return isSaved;
   }
 
   /// Progress for one story, or null if the reader has never opened it.
@@ -158,4 +198,20 @@ class LibraryRepository {
 class ReadingProgress {
   ReadingProgress({
     required this.percent,
-    required this.ch
+    required this.chapterId,
+    required this.completed,
+    required this.lastReadAt,
+  });
+
+  final int percent;
+  final int? chapterId;
+  final bool completed;
+  final String? lastReadAt;
+
+  factory ReadingProgress.fromJson(Map<String, dynamic> json) => ReadingProgress(
+    percent: (json['progress_percent'] as num?)?.toInt() ?? 0,
+    chapterId: json['progress_chapter_id'] as int?,
+    completed: json['progress_completed'] as bool? ?? false,
+    lastReadAt: json['last_read_at'] as String?,
+  );
+}

@@ -167,7 +167,7 @@ class ApiClient {
       }
     }
 
-    return _decodeWithRetry(send);
+    return _decodeWithRetry(send, authed: token != null);
   }
 
   /// Posts a JSON [body] and returns the decoded `data` field, same rules as
@@ -180,6 +180,11 @@ class ApiClient {
     String? token,
     bool includeEnvelope = false,
     Map<String, String>? extraHeaders,
+    // For slow calls (chapter narration takes 10-20 s) — and [retry] false
+    // for any call that must never be sent twice, e.g. one that can cost
+    // money.
+    Duration? timeout,
+    bool retry = true,
   }) async {
     final uri = Uri.parse('$baseUrl$path');
 
@@ -197,7 +202,7 @@ class ApiClient {
               },
               body: jsonEncode(body ?? const {}),
             )
-            .timeout(_requestTimeout);
+            .timeout(timeout ?? _requestTimeout);
       } on TimeoutException {
         throw ApiException(
           'The server took too long to respond. Try again.',
@@ -208,7 +213,18 @@ class ApiClient {
       }
     }
 
-    return _decodeWithRetry(send, includeEnvelope: includeEnvelope);
+    if (!retry) {
+      return _decode(
+        await send(),
+        includeEnvelope: includeEnvelope,
+        authed: token != null,
+      );
+    }
+    return _decodeWithRetry(
+      send,
+      includeEnvelope: includeEnvelope,
+      authed: token != null,
+    );
   }
 
   /// Sends a DELETE request and returns the decoded `data` field, same rules
@@ -253,7 +269,7 @@ class ApiClient {
       }
     }
 
-    return _decodeWithRetry(send);
+    return _decodeWithRetry(send, authed: token != null);
   }
 
   /// Sends a `multipart/form-data` request and returns the decoded `data`
@@ -297,7 +313,7 @@ class ApiClient {
       }
     }
 
-    return _decodeWithRetry(send);
+    return _decodeWithRetry(send, authed: token != null);
   }
 
   /// Sends via [send] and decodes the result, retrying once if the first
@@ -311,6 +327,7 @@ class ApiClient {
   Future<dynamic> _decodeWithRetry(
     Future<http.Response> Function() send, {
     bool includeEnvelope = false,
+    bool authed = false,
   }) async {
     final http.Response response;
     try {
@@ -320,18 +337,30 @@ class ApiClient {
       // connection the OS closed while the app was in the background), so a
       // single retry on a fresh connection is safe and usually succeeds.
       final retryResponse = await send();
-      return _decode(retryResponse, includeEnvelope: includeEnvelope);
+      return _decode(
+        retryResponse,
+        includeEnvelope: includeEnvelope,
+        authed: authed,
+      );
     }
     if (response.statusCode >= 300 &&
         response.statusCode < 400 &&
         response.headers['content-type']?.contains('json') != true) {
       final retryResponse = await send();
-      return _decode(retryResponse, includeEnvelope: includeEnvelope);
+      return _decode(
+        retryResponse,
+        includeEnvelope: includeEnvelope,
+        authed: authed,
+      );
     }
-    return _decode(response, includeEnvelope: includeEnvelope);
+    return _decode(response, includeEnvelope: includeEnvelope, authed: authed);
   }
 
-  dynamic _decode(http.Response response, {bool includeEnvelope = false}) {
+  dynamic _decode(
+    http.Response response, {
+    bool includeEnvelope = false,
+    bool authed = false,
+  }) {
     Map<String, dynamic> body;
     try {
       body = jsonDecode(response.body) as Map<String, dynamic>;
@@ -351,13 +380,24 @@ class ApiClient {
           ? rawMessage.values.join(', ')
           : 'Something went wrong.';
       final retryAfter = int.tryParse(response.headers['retry-after'] ?? '');
-      if (response.statusCode == 401) onUnauthorized?.call();
       final data = body['data'];
+      final code = data is Map ? data['code'] as String? : null;
+      // A 403 not_signed_in / session_expired means the same as a 401: the
+      // token sent is no longer honoured (e.g. the session was revoked or
+      // pushed out). Without this the app stays half signed-in and every
+      // screen shows a generic error instead of going back to Sign In.
+      // not_signed_in only counts when a token was actually sent — a call
+      // that simply omitted it mustn't sign the reader out.
+      if (response.statusCode == 401 ||
+          code == 'session_expired' ||
+          (authed && code == 'not_signed_in')) {
+        onUnauthorized?.call();
+      }
       throw ApiException(
         message,
         statusCode: response.statusCode,
         retryAfterSeconds: retryAfter,
-        code: data is Map ? data['code'] as String? : null,
+        code: code,
         data: data is Map<String, dynamic> ? data : null,
       );
     }

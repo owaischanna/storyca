@@ -56,11 +56,21 @@ class _LibraryState extends State<Library> {
   void initState() {
     super.initState();
     _load();
+    // A story saved/removed from its page shows up here without a pull.
+    libraryRepository.changed.addListener(_load);
+  }
+
+  @override
+  void dispose() {
+    libraryRepository.changed.removeListener(_load);
+    super.dispose();
   }
 
   Future<void> _load() async {
+    if (!mounted) return;
     setState(() => _error = null);
     final token = await authService.getToken();
+    if (!mounted) return;
     if (token == null) {
       setState(() => _isLoggedIn = false);
       return;
@@ -71,6 +81,7 @@ class _LibraryState extends State<Library> {
         libraryRepository.saved(token, genre: _appliedGenre, sort: _appliedSort),
         libraryRepository.completed(token, genre: _appliedGenre, sort: _appliedSort),
       ]);
+      if (!mounted) return;
       setState(() {
         _isLoggedIn = true;
         // Completed = reached the end of the final chapter (100% progress),
@@ -84,6 +95,7 @@ class _LibraryState extends State<Library> {
         _saved = results[1];
       });
     } on ApiException catch (e) {
+      if (!mounted) return;
       setState(() {
         _isLoggedIn = true;
         _error = e.message;

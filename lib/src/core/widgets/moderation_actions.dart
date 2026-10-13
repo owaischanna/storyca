@@ -6,10 +6,10 @@ import 'package:storryca/src/core/network/api_client.dart';
 import 'package:storryca/src/core/widgets/app_snackbar.dart';
 import 'package:storryca/src/core/widgets/custom_field.dart';
 import 'package:storryca/src/core/widgets/gradient_button.dart';
+import 'package:storryca/src/core/widgets/sign_in_redirect.dart';
 
-/// Shared "..." menu actions — Mute Updates and Report — used on the story
-/// page, the reader, and author/user profiles. Block is intentionally not
-/// here: it isn't built server-side yet.
+/// Shared "..." menu actions — Mute Updates, Report and Block — used on the
+/// story page, the reader, and author/user profiles.
 class ModerationActions {
   /// Flips mute for [userId]. Returns the server's resulting state (repaint
   /// from this, not from what was requested), or null if not signed in or
@@ -48,6 +48,83 @@ class ModerationActions {
       return await moderationRepository.isMuted(userId, token);
     } on ApiException {
       return false;
+    }
+  }
+
+  /// Best-effort read of the block state — false on any failure or when
+  /// signed out, so the row just shows "Block".
+  static Future<bool> isBlocked(int userId) async {
+    final token = await authService.getToken();
+    if (token == null) return false;
+    try {
+      return await moderationRepository.isBlocked(userId, token);
+    } on ApiException {
+      return false;
+    }
+  }
+
+  /// Blocks (after a confirmation saying what it does) or unblocks (no
+  /// confirmation) [userId]. Returns the server's resulting state, or null
+  /// if cancelled, signed out, or the call failed.
+  static Future<bool?> toggleBlock(
+    BuildContext context, {
+    required int userId,
+    required bool currentlyBlocked,
+  }) async {
+    final token = await authService.getToken();
+    if (!context.mounted) return null;
+    if (token == null) {
+      goToSignIn(context);
+      return null;
+    }
+    if (!currentlyBlocked) {
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          backgroundColor: const Color(0xff0E0318),
+          title: const Text(
+            'Block this account?',
+            style: TextStyle(color: Colors.white),
+          ),
+          content: Text(
+            'You won\'t see their stories, reviews or comments anywhere on '
+            'StorryCa, and any follow between you is removed. They aren\'t '
+            'told. You can unblock them from this same menu.',
+            style: TextStyle(color: Color(primaryTextCOLR)),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text(
+                'Cancel',
+                style: TextStyle(color: Color(0xff9110DE)),
+              ),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text(
+                'Block',
+                style: TextStyle(color: Color(0xffC23B3B)),
+              ),
+            ),
+          ],
+        ),
+      );
+      if (confirmed != true || !context.mounted) return null;
+    }
+    try {
+      final (blocked, message) = await moderationRepository.setBlocked(
+        userId,
+        !currentlyBlocked,
+        token,
+      );
+      if (context.mounted) AppSnackbar.success(context, message);
+      return blocked;
+    } on ApiException catch (e) {
+      if (context.mounted && !redirectIfSignedOut(context, e)) {
+        AppSnackbar.error(context, e.message);
+      }
+      return null;
     }
   }
 

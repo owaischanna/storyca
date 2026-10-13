@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:remixicon/remixicon.dart';
+import 'package:storryca/src/core/network/api.dart';
 import 'package:storryca/src/core/constants/colors.const.dart';
 import 'package:storryca/src/features/discover/presentation/pages/discover.dart';
 import 'package:storryca/src/features/home/presentation/pages/home.dart';
@@ -39,6 +40,8 @@ class _MainState extends State<Main> {
   void initState() {
     super.initState();
     _pageIndex = widget.initialIndex;
+    // Bookmarks on cards and "Add to Library" menus paint from this.
+    authService.getToken().then(libraryRepository.ensureSavedIds);
   }
 
   @override

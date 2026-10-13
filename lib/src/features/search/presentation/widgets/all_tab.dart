@@ -183,7 +183,6 @@ class _AllTabState extends State<AllTab> {
                           title: item.title,
                           category: item.category,
                           description: item.description,
-                          isSaved: item.isSaved,
                           reads: item.reads,
                         );
                       }),

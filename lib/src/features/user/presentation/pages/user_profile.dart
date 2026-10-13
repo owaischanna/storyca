@@ -10,6 +10,7 @@ import 'package:storryca/src/core/network/image_url.dart';
 import 'package:storryca/src/core/network/models/follow_api_model.dart';
 import 'package:storryca/src/core/widgets/app_image.dart';
 import 'package:storryca/src/core/widgets/app_snackbar.dart';
+import 'package:storryca/src/core/widgets/sign_in_redirect.dart';
 import 'package:storryca/src/core/widgets/moderation_actions.dart';
 
 /// There is no public endpoint yet to fetch a non-author reader's profile by
@@ -29,6 +30,7 @@ class UserProfile extends StatefulWidget {
 
 class _UserProfileState extends State<UserProfile> {
   bool _muted = false;
+  bool _blocked = false;
   late FollowUserApiModel _user = widget.user;
   bool _updating = false;
   int? _following;
@@ -39,6 +41,9 @@ class _UserProfileState extends State<UserProfile> {
     ModerationActions.isMuted(_user.id).then((muted) {
       if (mounted) setState(() => _muted = muted);
     });
+    ModerationActions.isBlocked(_user.id).then((blocked) {
+      if (mounted) setState(() => _blocked = blocked);
+    });
     _loadFollowState();
   }
 
@@ -46,7 +51,24 @@ class _UserProfileState extends State<UserProfile> {
     try {
       final token = await authService.getToken();
       final state = await followRepository.state(_user.id, token: token);
-      if (mounted) setState(() => _following = state.following);
+      if (!mounted) return;
+      // The list row this page was opened from can be stale (followed from
+      // elsewhere since) — the button, counts and is_self come from here.
+      setState(() {
+        _following = state.following;
+        _user = FollowUserApiModel(
+          id: _user.id,
+          name: _user.name,
+          username: _user.username,
+          image: _user.image,
+          aboutMe: _user.aboutMe,
+          type: _user.type,
+          followedAt: _user.followedAt,
+          followers: state.followers,
+          isFollowing: state.isFollowing,
+          isSelf: state.isSelf,
+        );
+      });
     } on ApiException {
       // Following count is a nice-to-have here; keep the rest of the page.
     }
@@ -55,7 +77,7 @@ class _UserProfileState extends State<UserProfile> {
   Future<void> _toggleFollow() async {
     final token = await authService.getToken();
     if (token == null) {
-      if (mounted) AppSnackbar.warning(context, 'Sign in to follow readers.');
+      if (mounted) goToSignIn(context);
       return;
     }
     setState(() => _updating = true);
@@ -74,11 +96,13 @@ class _UserProfileState extends State<UserProfile> {
           followedAt: _user.followedAt,
           followers: state.followers,
           isFollowing: state.isFollowing,
-          isSelf: _user.isSelf,
+          isSelf: state.isSelf,
         );
       });
     } on ApiException catch (e) {
-      if (mounted) AppSnackbar.error(context, e.message);
+      if (mounted && !redirectIfSignedOut(context, e)) {
+        AppSnackbar.error(context, e.message);
+      }
     } finally {
       if (mounted) setState(() => _updating = false);
     }
@@ -168,7 +192,20 @@ class _UserProfileState extends State<UserProfile> {
                                         targetId: _user.id,
                                       );
                                     }
-                                    // 'block' stays inert until blocking is built.
+                                    if (value == 'block' && context.mounted) {
+                                      final blocked =
+                                          await ModerationActions.toggleBlock(
+                                            context,
+                                            userId: _user.id,
+                                            currentlyBlocked: _blocked,
+                                          );
+                                      if (blocked != null && mounted) {
+                                        setState(() => _blocked = blocked);
+                                        // Any follow between them is dropped
+                                        // server-side — reload the button.
+                                        _loadFollowState();
+                                      }
+                                    }
                                   },
                                   itemBuilder: (context) {
                                     return [
@@ -235,6 +272,32 @@ class _UserProfileState extends State<UserProfile> {
                                           ],
                                         ),
                                       ),
+                                      // Same row as the author profile's.
+                                      // Not offered on the reader's own.
+                                      if (!_user.isSelf)
+                                        PopupMenuItem(
+                                          height: 40,
+                                          value: 'block',
+                                          child: Row(
+                                            spacing: 8,
+                                            children: [
+                                              Icon(
+                                                Remix.user_unfollow_line,
+                                                color: Color(0xffC23B3B),
+                                                size: 16,
+                                              ),
+                                              Text(
+                                                _blocked
+                                                    ? 'Unblock User'
+                                                    : 'Block User',
+                                                style: TextStyle(
+                                                  color: Color(0xffC23B3B),
+                                                  fontSize: 14,
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        ),
                                     ];
                                   },
                                 ),

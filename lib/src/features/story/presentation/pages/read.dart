@@ -2,13 +2,18 @@ import 'package:storryca/src/core/network/models/story_api_model.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:storryca/src/core/constants/colors.const.dart';
 import 'package:storryca/src/core/network/api.dart';
 import 'package:storryca/src/core/network/api_client.dart';
 import 'package:storryca/src/core/network/models/chapter_api_model.dart';
 import 'package:storryca/src/core/widgets/error_state.dart';
 import 'package:storryca/src/core/widgets/loading_state.dart';
+import 'package:storryca/src/core/widgets/app_snackbar.dart';
 import 'package:storryca/src/core/widgets/moderation_actions.dart';
+import 'package:storryca/src/core/widgets/secure_screen.dart';
+import 'package:storryca/src/core/widgets/sign_in_redirect.dart';
+import 'package:storryca/src/features/story/presentation/widgets/chapter_audio_bar.dart';
 import 'package:storryca/src/features/story/presentation/widgets/chapters_side_panel.dart';
 import 'package:storryca/src/features/story/presentation/widgets/read_mode_appbar.dart';
 import 'package:storryca/src/features/story/presentation/widgets/story_read_item.dart';
@@ -30,6 +35,143 @@ class _ReadState extends State<Read> {
   ChapterApiModel? _chapter;
   StoryApiModel? _story;
   bool _authorMuted = false;
+  bool _inLibrary = false;
+  bool _libraryUpdating = false;
+
+  /// One player for every chapter on this screen; stops when it closes.
+  final ChapterAudioPlayer _audioPlayer = ChapterAudioPlayer();
+
+  // Chapter text size — the reader's choice, kept across chapters and
+  // sessions.
+  static const String _fontSizeKey = 'reader_font_size';
+  static const double _minFontSize = 13;
+  static const double _maxFontSize = 31;
+  static const double _fontStep = 2;
+  double _fontSize = 19;
+
+  Future<void> _loadFontSize() async {
+    final prefs = await SharedPreferences.getInstance();
+    final saved = prefs.getDouble(_fontSizeKey);
+    if (saved != null && mounted) setState(() => _fontSize = saved);
+  }
+
+  Future<void> _setFontSize(double size) async {
+    final next = size.clamp(_minFontSize, _maxFontSize).toDouble();
+    if (next == _fontSize) return;
+    setState(() => _fontSize = next);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setDouble(_fontSizeKey, next);
+  }
+
+  void _showTextSize() {
+    showModalBottomSheet(
+      context: context,
+      barrierColor: const Color.fromRGBO(255, 255, 255, 0.1),
+      builder: (sheetContext) => StatefulBuilder(
+        builder: (sheetContext, setSheetState) {
+          Widget stepButton(String label, double size, double delta) {
+            final enabled = delta < 0
+                ? _fontSize > _minFontSize
+                : _fontSize < _maxFontSize;
+            return GestureDetector(
+              onTap: !enabled
+                  ? null
+                  : () async {
+                      await _setFontSize(_fontSize + delta);
+                      setSheetState(() {});
+                    },
+              child: Container(
+                width: 56,
+                height: 44,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  border: Border.all(
+                    width: 1,
+                    color: const Color.fromRGBO(195, 132, 255, 0.3),
+                  ),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Text(
+                  label,
+                  style: TextStyle(
+                    color: enabled
+                        ? Colors.white
+                        : const Color.fromRGBO(255, 255, 255, 0.3),
+                    fontSize: size,
+                  ),
+                ),
+              ),
+            );
+          }
+
+          return Container(
+            padding: const EdgeInsets.all(16),
+            width: double.infinity,
+            decoration: const BoxDecoration(
+              color: Color(0xff0E0318),
+              borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+            ),
+            child: SafeArea(
+              top: false,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                spacing: 16,
+                children: [
+                  const Text(
+                    'Text Size',
+                    style: TextStyle(color: Colors.white, fontSize: 16),
+                  ),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    spacing: 24,
+                    children: [
+                      stepButton('A−', 14, -_fontStep),
+                      Text(
+                        _fontSize.round().toString(),
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 18,
+                        ),
+                      ),
+                      stepButton('A+', 20, _fontStep),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  Future<void> _toggleLibrary() async {
+    final token = _token;
+    final storyId = _chapter?.storyId;
+    if (token == null) {
+      goToSignIn(context);
+      return;
+    }
+    if (storyId == null || _libraryUpdating) return;
+    _libraryUpdating = true;
+    try {
+      final saved = _inLibrary
+          ? await libraryRepository.unsave(storyId, token)
+          : await libraryRepository.save(storyId, token);
+      if (!mounted) return;
+      setState(() => _inLibrary = saved);
+      AppSnackbar.success(
+        context,
+        saved ? 'Saved to your library.' : 'Removed from your library.',
+      );
+    } on ApiException catch (e) {
+      if (mounted && !redirectIfSignedOut(context, e)) {
+        AppSnackbar.error(context, e.message);
+      }
+    } finally {
+      _libraryUpdating = false;
+    }
+  }
 
   /// Reader's position through the whole story, shown in the app bar.
   int _percent = 0;
@@ -60,6 +202,9 @@ class _ReadState extends State<Read> {
   @override
   void initState() {
     super.initState();
+    // Chapters can't be screenshotted or recorded; the rest of the app can.
+    SecureScreen.enter();
+    _loadFontSize();
 
     // HIDE TOP AND BOTTOM SYSTEM UI
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersive);
@@ -93,6 +238,16 @@ class _ReadState extends State<Read> {
         ModerationActions.isMuted(authorId).then((muted) {
           if (mounted) setState(() => _authorMuted = muted);
         });
+      }
+      // Read on open, so the menu never offers "Add" for a saved book.
+      final token = _token;
+      if (token != null) {
+        libraryRepository
+            .isSaved(chapter.storyId, token)
+            .then((saved) {
+              if (mounted) setState(() => _inLibrary = saved);
+            })
+            .catchError((_) {});
       }
       final startIndex = siblings.indexWhere((c) => c.id == chapter.id);
       setState(() {
@@ -216,6 +371,9 @@ class _ReadState extends State<Read> {
               author: _story?.authorName ?? '',
               percent: _percent,
               authorMuted: _authorMuted,
+              inLibrary: _inLibrary,
+              onToggleLibrary: _toggleLibrary,
+              onTextSize: _showTextSize,
               onMute: () async {
                 final story = _story;
                 if (story == null || story.authorId == 0) return;
@@ -269,6 +427,16 @@ class _ReadState extends State<Read> {
                         title: chapter.title,
                         chapter: '${chapter.orderIndex}',
                         content: chapter.body,
+                        fontSize: _fontSize,
+                        // Listening is locked exactly like reading — no
+                        // audio controls on a book that isn't unlocked.
+                        audio: chapter.locked
+                            ? null
+                            : ChapterAudioBar(
+                                key: ValueKey('audio-${chapter.id}'),
+                                chapterId: chapter.id,
+                                player: _audioPlayer,
+                              ),
                       );
                     }),
                 ],
@@ -291,6 +459,8 @@ class _ReadState extends State<Read> {
 
   @override
   void dispose() {
+    _audioPlayer.dispose();
+    SecureScreen.exit();
     _disposed = true;
     _maybeRecordFinished();
     _scrollController.dispose();

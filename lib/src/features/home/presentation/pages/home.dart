@@ -31,6 +31,14 @@ class _HomeState extends State<Home> {
   void initState() {
     super.initState();
     _load();
+    // A blocked account's stories leave the server's responses — re-fetch.
+    moderationRepository.blocksChanged.addListener(_load);
+  }
+
+  @override
+  void dispose() {
+    moderationRepository.blocksChanged.removeListener(_load);
+    super.dispose();
   }
 
   Future<void> _load() async {

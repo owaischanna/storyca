@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:storryca/src/core/utils/compact_count.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:storryca/src/core/widgets/app_image.dart';
@@ -38,7 +39,7 @@ class RecommendedCarouselItem extends StatelessWidget {
               style: GoogleFonts.playfair(color: Colors.white, fontSize: 14),
             ),
             Text(
-              '${reads.toInt()} Reads',
+              '${compactCount(reads)} Reads',
               style: TextStyle(
                 color: Color.fromRGBO(195, 132, 255, 0.5),
                 fontSize: 10,
