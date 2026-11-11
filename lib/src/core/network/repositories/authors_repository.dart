@@ -32,7 +32,9 @@ class AuthorsRepository {
   }
 
   Future<AuthorApiModel> byId(int id) async {
-    final data = await _client.get('/authors/$id') as Map<String, dynamic>;
+    final data =
+        await _client.get('/authors/$id', token: await _client.readerToken())
+            as Map<String, dynamic>;
     return AuthorApiModel.fromJson(data);
   }
 
@@ -44,6 +46,8 @@ class AuthorsRepository {
     final data = await _client.get(
       '/authors/$id/stories',
       query: {'page': page, 'limit': limit},
+      // As the reader, so an author's 18+ books show for adults only.
+      token: await _client.readerToken(),
     ) as Map<String, dynamic>;
 
     final items = (data['items'] as List? ?? [])

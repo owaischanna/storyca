@@ -8,7 +8,7 @@ import 'package:storryca/src/core/network/auth_service.dart';
 import 'package:storryca/src/core/network/play_billing_products.dart';
 import 'package:storryca/src/core/network/repositories/wallet_repository.dart';
 
-enum PlayBillingOutcomeType { pending, success, error }
+enum PlayBillingOutcomeType { pending, success, error, canceled }
 
 /// What happened to one purchase, once this service has finished acting on
 /// it. `topup.dart` listens to a stream of these to show a snackbar and
@@ -39,6 +39,10 @@ class PlayBillingOutcome {
     coins: coins,
     alreadyCredited: alreadyCredited,
   );
+
+  /// The reader closed Play's payment sheet without paying.
+  factory PlayBillingOutcome.canceled(String productId) =>
+      PlayBillingOutcome._(PlayBillingOutcomeType.canceled, productId);
 
   factory PlayBillingOutcome.error(String productId, String message) =>
       PlayBillingOutcome._(
@@ -131,7 +135,8 @@ class PlayBillingService {
   /// failed verify never leaves a reader both charged and short a purchase
   /// they could otherwise retry. The result arrives later on [outcomes],
   /// once the purchase stream delivers it — this call only starts the flow.
-  Future<void> buy(ProductDetails product) => _iap.buyConsumable(
+  /// Returns false when Play couldn't even open its payment sheet.
+  Future<bool> buy(ProductDetails product) => _iap.buyConsumable(
     purchaseParam: PurchaseParam(productDetails: product),
     autoConsume: false,
   );
@@ -152,6 +157,10 @@ class PlayBillingService {
             await _iap.completePurchase(purchase);
           }
         case PurchaseStatus.canceled:
+          // Must be reported: the top-up screen locks every pack while a
+          // purchase is open, and without this it stayed locked for good
+          // after the reader backed out of Play's sheet.
+          _outcomes.add(PlayBillingOutcome.canceled(purchase.productID));
           if (purchase.pendingCompletePurchase) {
             await _iap.completePurchase(purchase);
           }

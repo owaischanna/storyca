@@ -337,16 +337,19 @@ class _HasTransactionHistoryState extends State<HasTransactionHistory> {
                           spacing: 8,
                           children: [
                             ...quickStartTHItems.map((item) {
-                              return GestureDetector(
-                                onTap: () {
-                                  setSheetModal(() {
-                                    updateSelectedQuickStart(item.label);
-                                  });
-                                },
-                                child: QuickStartTHItem(
-                                  label: item.label,
-                                  icon: item.icon,
-                                  isSelected: item.label == selectedQuickStart,
+                              return Expanded(
+                                child: GestureDetector(
+                                  onTap: () {
+                                    setSheetModal(() {
+                                      updateSelectedQuickStart(item.label);
+                                    });
+                                  },
+                                  child: QuickStartTHItem(
+                                    label: item.label,
+                                    icon: item.icon,
+                                    isSelected:
+                                        item.label == selectedQuickStart,
+                                  ),
                                 ),
                               );
                             }),

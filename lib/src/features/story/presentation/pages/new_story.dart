@@ -1,17 +1,22 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:remixicon/remixicon.dart';
 import 'package:storryca/src/core/constants/colors.const.dart';
 import 'package:storryca/src/core/constants/text_styyle.dart';
 import 'package:storryca/src/core/network/api.dart';
 import 'package:storryca/src/core/network/api_client.dart';
+import 'package:storryca/src/core/network/image_url.dart';
+import 'package:storryca/src/core/network/models/story_api_model.dart';
+import 'package:storryca/src/core/utils/trailer_file.dart';
 import 'package:storryca/src/core/widgets/app_snackbar.dart';
 import 'package:storryca/src/core/widgets/loading_state.dart';
 import 'package:storryca/src/features/story/presentation/widgets/step_1.dart';
 import 'package:storryca/src/features/story/presentation/widgets/step_2.dart';
 import 'package:storryca/src/features/story/presentation/widgets/step_3.dart';
 import 'package:storryca/src/features/story/presentation/widgets/step_4.dart';
+import 'package:storryca/src/features/story/presentation/widgets/trailer_picker.dart';
 import 'package:textfield_tags/textfield_tags.dart';
 
 /// Genre dropdowns leave the controller at this placeholder until the
@@ -20,7 +25,11 @@ import 'package:textfield_tags/textfield_tags.dart';
 const String genrePlaceholder = 'Select a genre';
 
 class NewStory extends StatefulWidget {
-  const NewStory({super.key});
+  const NewStory({super.key, this.story});
+
+  /// Set for "Edit Story": the wizard opens prefilled with this story and
+  /// saves over it. Null creates a new story.
+  final StoryApiModel? story;
 
   @override
   State<NewStory> createState() => NewStoryState();
@@ -41,6 +50,20 @@ class NewStoryState extends State<NewStory> {
   StringTagController tagsController = StringTagController();
 
   dynamic cover;
+
+  /// Tags as last left on the Settings step (the tag field's controller is
+  /// rebuilt each time that step opens).
+  List<String> _tags = [];
+
+  /// A newly picked trailer, uploaded on save; [existingTrailer] is the one
+  /// the novel already has (editing), [removeTrailer] asks to delete it.
+  PickedTrailer? trailer;
+  StoryTrailer? existingTrailer;
+  bool removeTrailer = false;
+  String? trailerError;
+  bool _checkingTrailer = false;
+
+  bool get _editing => widget.story != null;
 
   List<String> genres = [];
   List<String> languages = [];
@@ -63,11 +86,23 @@ class NewStoryState extends State<NewStory> {
         storiesRepository.languages(),
         storiesRepository.regions(),
       ]);
+      final editing = widget.story;
+      StoryApiModel? story = editing;
+      if (editing != null) {
+        // The public story carries the trailer; drafts aren't public, so
+        // fall back to the author's own copy from the list.
+        try {
+          story = await storiesRepository.byId(editing.id);
+        } on ApiException {
+          story = editing;
+        }
+      }
       if (!mounted) return;
       setState(() {
         genres = results[0];
         languages = results[1];
         regions = results[2];
+        if (story != null) _prefill(story);
         _loadingOptions = false;
       });
     } on ApiException catch (e) {
@@ -75,6 +110,81 @@ class NewStoryState extends State<NewStory> {
       setState(() => _loadingOptions = false);
       AppSnackbar.error(context, e.message);
     }
+  }
+
+  /// The list's own spelling of [value] when it has one (the server may
+  /// send "inspiration" for "Inspiration"), otherwise [value] as-is.
+  String _match(List<String> options, String value) => options.firstWhere(
+    (o) => o.toLowerCase() == value.toLowerCase(),
+    orElse: () => value,
+  );
+
+  void _prefill(StoryApiModel story) {
+    titleController.text = story.title;
+    if (story.genre.isNotEmpty) {
+      genreController.text = _match(genres, story.genre);
+    }
+    summaryController.text = story.summary;
+    if (story.language.isNotEmpty) {
+      languageController.text = _match(languages, story.language);
+    }
+    if (story.region.isNotEmpty) {
+      regionController.text = _match(regions, story.region);
+    }
+    contentRating = switch (story.contentRating.toLowerCase()) {
+      'everyone' => 'Everyone',
+      '4' => '4+',
+      '12' => '12+',
+      '16' => '16+',
+      '18' => '18+',
+      _ => '',
+    };
+    targetAudience = _match(['General', 'Male', 'Female'], story.audience);
+    _tags = story.tags
+        .split(',')
+        .map((t) => t.trim())
+        .where((t) => t.isNotEmpty)
+        .toList();
+    if ((story.cover ?? '').isNotEmpty) {
+      cover = NetworkImage(coverUrl(story.cover, fallbackAsset: ''));
+    }
+    existingTrailer = story.trailer;
+  }
+
+  Future<void> pickTrailer() async {
+    final file = await ImagePicker().pickVideo(source: ImageSource.gallery);
+    if (file == null || !mounted) return;
+    setState(() => _checkingTrailer = true);
+    try {
+      final picked = await PickedTrailer.inspect(file.path, file.name);
+      final problem = picked.problem;
+      if (!mounted) return;
+      setState(() {
+        if (problem == null) trailer = picked;
+        trailerError = problem;
+      });
+    } catch (_) {
+      if (mounted) {
+        setState(
+          () => trailerError = 'Could not read that video. Try another file.',
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _checkingTrailer = false);
+    }
+  }
+
+  /// Drops a newly picked file first (the current trailer shows again);
+  /// with nothing new picked, marks the current trailer for removal.
+  void clearTrailer() {
+    setState(() {
+      if (trailer != null) {
+        trailer = null;
+      } else if (existingTrailer != null) {
+        removeTrailer = true;
+      }
+      trailerError = null;
+    });
   }
 
   void updateSelectedImage(dynamic newCover) {
@@ -96,6 +206,9 @@ class NewStoryState extends State<NewStory> {
 
   void updateStep(int newStep) {
     setState(() {
+      if (step == 2 && newStep != 2) {
+        _tags = tagsController.getTags?.toList() ?? [];
+      }
       if (step != 2 && newStep == 2) {
         tagsController = StringTagController();
       }
@@ -150,7 +263,7 @@ class NewStoryState extends State<NewStory> {
         ? ''
         : genreController.text.trim();
     final summary = summaryController.text.trim();
-    final tags = tagsController.getTags?.join(',') ?? '';
+    final tags = (step == 2 ? tagsController.getTags ?? [] : _tags).join(',');
 
     if (submitForReview) {
       final missing = [
@@ -161,7 +274,7 @@ class NewStoryState extends State<NewStory> {
         if (languageController.text.isEmpty) 'a language',
         if (regionController.text.isEmpty) 'a region',
         if (targetAudience.isEmpty) 'a target audience',
-        if (_coverPath == null) 'a cover image',
+        if (_coverPath == null && cover == null) 'a cover image',
       ];
       if (missing.isNotEmpty) {
         AppSnackbar.error(context, 'Please add ${missing.join(', ')}.');
@@ -172,19 +285,32 @@ class NewStoryState extends State<NewStory> {
     setState(() => _submitting = true);
     try {
       final result = await storiesRepository.createOrUpdateStory(
+        storyId: widget.story?.id,
         title: title,
         status: submitForReview ? 'published' : 'draft',
         genre: genre.isEmpty ? null : genre,
         summary: summary.isEmpty ? null : summary,
         contentRating: _contentRatingValue.isEmpty ? null : _contentRatingValue,
         tags: tags.isEmpty ? null : tags,
-        language: languageController.text.isEmpty ? null : languageController.text,
+        language: languageController.text.isEmpty
+            ? null
+            : languageController.text,
         region: regionController.text.isEmpty ? null : regionController.text,
         audience: targetAudience.isEmpty ? null : targetAudience.toLowerCase(),
         coverPath: _coverPath,
+        trailerPath: trailer?.path,
+        removeTrailer: removeTrailer,
         token: token,
       );
       if (!mounted) return;
+      if (_editing) {
+        AppSnackbar.success(
+          context,
+          submitForReview ? 'Story saved and sent for review.' : 'Draft saved.',
+        );
+        context.pop(true);
+        return;
+      }
       context.pushReplacement(
         '/story-created/${result.storyId}',
         extra: submitForReview,
@@ -225,7 +351,7 @@ class NewStoryState extends State<NewStory> {
                             ),
                           ),
                           Text(
-                            'Create New Story',
+                            _editing ? 'Edit Story' : 'Create New Story',
                             style: GoogleFonts.playfair(
                               color: Colors.white,
                               fontSize: 18,
@@ -233,35 +359,39 @@ class NewStoryState extends State<NewStory> {
                           ),
                         ],
                       ),
-                      GestureDetector(
-                        onTap: _submitting
-                            ? null
-                            : () => _submit(submitForReview: false),
-                        child: Container(
-                          padding: EdgeInsets.all(8),
-                          decoration: BoxDecoration(
-                            border: Border.all(
-                              width: 1,
-                              color: Color.fromRGBO(181, 77, 232, 0.1),
+                      // Saving a live story as a draft would take it down,
+                      // so editing one only offers the review submit.
+                      if (!_editing ||
+                          widget.story!.status.toLowerCase() == 'draft')
+                        GestureDetector(
+                          onTap: _submitting
+                              ? null
+                              : () => _submit(submitForReview: false),
+                          child: Container(
+                            padding: EdgeInsets.all(8),
+                            decoration: BoxDecoration(
+                              border: Border.all(
+                                width: 1,
+                                color: Color.fromRGBO(181, 77, 232, 0.1),
+                              ),
+                              borderRadius: BorderRadius.circular(5),
                             ),
-                            borderRadius: BorderRadius.circular(5),
-                          ),
-                          child: Row(
-                            spacing: 4,
-                            children: [
-                              Icon(
-                                Remix.save_3_line,
-                                size: 12,
-                                color: Color(secondaryCOLR),
-                              ),
-                              Text(
-                                _submitting ? 'Saving…' : 'Save Draft',
-                                style: secondaryF12TS,
-                              ),
-                            ],
+                            child: Row(
+                              spacing: 4,
+                              children: [
+                                Icon(
+                                  Remix.save_3_line,
+                                  size: 12,
+                                  color: Color(secondaryCOLR),
+                                ),
+                                Text(
+                                  _submitting ? 'Saving…' : 'Save Draft',
+                                  style: secondaryF12TS,
+                                ),
+                              ],
+                            ),
                           ),
                         ),
-                      ),
                     ],
                   ),
                 ),
@@ -295,6 +425,7 @@ class NewStoryState extends State<NewStory> {
                       updateTargetAudience: updateTargetAudience,
                       languages: languages,
                       regions: regions,
+                      initialTags: _tags,
                     ),
 
                   // STEP 3
@@ -303,6 +434,14 @@ class NewStoryState extends State<NewStory> {
                       updateStep: updateStep,
                       updateSelectedImage: updateSelectedImage,
                       cover: cover,
+                      trailer: TrailerPicker(
+                        picked: trailer,
+                        existing: removeTrailer ? null : existingTrailer,
+                        error: trailerError,
+                        checking: _checkingTrailer,
+                        onPick: pickTrailer,
+                        onClear: clearTrailer,
+                      ),
                     ),
 
                   // STEP 4
@@ -316,7 +455,7 @@ class NewStoryState extends State<NewStory> {
                           : genreController.text,
                       summary: summaryController.text,
                       contentRating: contentRating,
-                      tags: tagsController.getTags?.join(', ') ?? '',
+                      tags: _tags.join(', '),
                       language: languageController.text,
                       region: regionController.text,
                       targetAudience: targetAudience,

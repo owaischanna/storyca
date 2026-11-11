@@ -70,6 +70,7 @@ class AuthService {
     // right away so the app can't keep presenting a logged-in state the
     // server has already stopped honoring.
     _client.onUnauthorized = _expireSession;
+    _client.tokenProvider = getToken;
   }
 
   final ApiClient _client;
@@ -208,8 +209,10 @@ class AuthService {
   Future<AuthResult> register(
     String email,
     String password,
-    String passwordConfirmation,
-  ) async {
+    String passwordConfirmation, {
+    // The sign-up age question. Unticked = under 18, so 18+ books stay hidden.
+    bool isAdult = false,
+  }) async {
     final body =
         await _client.post(
               '/register',
@@ -218,6 +221,7 @@ class AuthService {
                 'password': password,
                 'password_confirmation': passwordConfirmation,
                 'auth_provider': 'email',
+                'is_adult': isAdult,
               },
               includeEnvelope: true,
             )
@@ -323,7 +327,7 @@ class AuthService {
     final token = prefs.getString(_tokenKey);
     await prefs.remove(_tokenKey);
     await prefs.remove(_loginAtKey);
-    _client.clearCookies();
+    _client.clearCookies(signedOutToken: token);
     // Cleared first, so a 401 from the unregister call can't loop back here
     // with a session still on disk.
     if (token != null) onSignedOut?.call(token);

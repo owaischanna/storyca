@@ -27,7 +27,9 @@ class StoriesRepository {
   }) async {
     final data = await _client.get(
       '/stories/catalog',
-      token: token,
+      // Always as the reader: the server hides 18+ books from anyone it
+      // can't identify as an adult.
+      token: token ?? await _client.readerToken(),
       query: {
         if (hideMuted) 'hide_muted': 1,
         'q': q,
@@ -61,14 +63,21 @@ class StoriesRepository {
 
   /// Genre chips with their published-story counts, e.g. `{name, total}`.
   Future<List<Map<String, dynamic>>> genresWithCounts() async {
-    final data = await _client.get('/stories/genres') as List;
+    final data =
+        await _client.get(
+              '/stories/genres',
+              token: await _client.readerToken(),
+            )
+            as List;
     return data.cast<Map<String, dynamic>>();
   }
 
   /// Throws [ApiException] with [ApiException.isNotFound] when the story
   /// does not exist or is not published.
   Future<StoryApiModel> byId(int id) async {
-    final data = await _client.get('/stories/$id') as Map<String, dynamic>;
+    final data =
+        await _client.get('/stories/$id', token: await _client.readerToken())
+            as Map<String, dynamic>;
     return StoryApiModel.fromJson(data);
   }
 
@@ -195,6 +204,10 @@ class StoriesRepository {
     String? region,
     String? audience,
     String? coverPath,
+    // The novel trailer: [trailerPath] uploads a new one (replacing any
+    // existing), [removeTrailer] deletes it, neither leaves it alone.
+    String? trailerPath,
+    bool removeTrailer = false,
     required String token,
   }) async {
     final fields = <String, String>{
@@ -208,6 +221,7 @@ class StoriesRepository {
       if (language != null) 'language': language,
       if (region != null) 'region': region,
       if (audience != null) 'audience': audience,
+      if (removeTrailer && trailerPath == null) 'remove_trailer': '1',
     };
     try {
       final data =
@@ -216,7 +230,14 @@ class StoriesRepository {
                 fields: fields,
                 fileField: coverPath == null ? null : 'cover',
                 filePath: coverPath,
+                extraFiles: {'trailer': ?trailerPath},
                 token: token,
+                // A trailer is up to 50MB on a mobile connection: give it
+                // time, and never quietly upload it a second time.
+                timeout: trailerPath == null
+                    ? null
+                    : const Duration(minutes: 15),
+                retry: trailerPath == null,
               )
               as Map<String, dynamic>;
       return StoryDraftResult.fromJson(data);
@@ -234,15 +255,22 @@ class StoriesRepository {
 }
 
 class StoryDraftResult {
-  StoryDraftResult({required this.storyId, required this.status, required this.cover});
+  StoryDraftResult({
+    required this.storyId,
+    required this.status,
+    required this.cover,
+    this.trailer,
+  });
 
   final int storyId;
   final String status;
   final String? cover;
+  final StoryTrailer? trailer;
 
   factory StoryDraftResult.fromJson(Map<String, dynamic> json) => StoryDraftResult(
     storyId: json['story_id'] as int,
     status: json['status'] as String? ?? '',
     cover: json['cover'] as String?,
+    trailer: StoryTrailer.maybeFromJson(json['trailer']),
   );
 }

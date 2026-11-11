@@ -4,6 +4,7 @@ import 'package:remixicon/remixicon.dart';
 import 'package:storryca/src/core/network/api.dart';
 import 'package:storryca/src/core/network/api_client.dart';
 import 'package:storryca/src/core/widgets/app_snackbar.dart';
+import 'package:storryca/src/core/widgets/custom_field.dart';
 import 'package:storryca/src/features/account/contents/account_settings_content.dart';
 
 class DeleteAccountModal extends StatefulWidget {
@@ -15,23 +16,82 @@ class DeleteAccountModal extends StatefulWidget {
 
 class _DeleteAccountModalState extends State<DeleteAccountModal> {
   bool _deleting = false;
+  final _passwordController = TextEditingController();
+  final _confirmController = TextEditingController();
+
+  /// Shown inside the dialog — a snackbar would sit hidden behind it.
+  String? _error;
+
+  @override
+  void dispose() {
+    _passwordController.dispose();
+    _confirmController.dispose();
+    super.dispose();
+  }
 
   Future<void> _delete() async {
     if (_deleting) return;
+    final password = _passwordController.text.trim();
+    final confirm = _confirmController.text.trim().toUpperCase();
+    if (password.isEmpty) {
+      setState(() => _error = 'Current password is required.');
+      return;
+    }
+    if (confirm != 'DELETE') {
+      setState(() => _error = 'Type DELETE to confirm account deletion.');
+      return;
+    }
     final token = await authService.getToken();
     if (token == null) return;
-    setState(() => _deleting = true);
+    setState(() {
+      _deleting = true;
+      _error = null;
+    });
     try {
-      await usersRepository.deleteAccount(token);
+      await usersRepository.deleteAccount(
+        token,
+        currentPassword: password,
+        confirm: confirm,
+      );
       await authService.logout();
       if (!mounted) return;
       AppSnackbar.success(context, 'Your account has been deleted.');
       context.go('/signin');
     } on ApiException catch (e) {
       if (!mounted) return;
-      setState(() => _deleting = false);
-      AppSnackbar.error(context, e.message);
+      setState(() {
+        _deleting = false;
+        _error = e.message;
+      });
     }
+  }
+
+  Widget _field(
+    String label,
+    TextEditingController controller,
+    String placeholder, {
+    bool secret = false,
+  }) {
+    return Column(
+      spacing: 6,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(label, style: TextStyle(color: Colors.white, fontSize: 12)),
+        CustomTextField(
+          controller: controller,
+          placeholder: placeholder,
+          hideText: secret,
+          hasPrefixIcon: false,
+          hasSuffixIcon: false,
+          enabled: !_deleting,
+          onSubmitted: () {},
+          suffixAction: () {},
+          onChange: (_) {
+            if (_error != null) setState(() => _error = null);
+          },
+        ),
+      ],
+    );
   }
 
   @override
@@ -39,7 +99,10 @@ class _DeleteAccountModalState extends State<DeleteAccountModal> {
     return AlertDialog(
       contentPadding: EdgeInsets.all(0),
       backgroundColor: Colors.transparent,
+      // Scrolls so the fields stay reachable above the keyboard.
+      scrollable: true,
       content: Column(
+        mainAxisSize: MainAxisSize.min,
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
           Container(
@@ -92,6 +155,19 @@ class _DeleteAccountModalState extends State<DeleteAccountModal> {
                   textAlign: TextAlign.center,
                   style: TextStyle(color: Color(0xff9D8AC5), fontSize: 12),
                 ),
+                _field(
+                  'Current Password',
+                  _passwordController,
+                  'Enter your current password',
+                  secret: true,
+                ),
+                _field('Type DELETE to confirm', _confirmController, 'DELETE'),
+                if (_error != null)
+                  Text(
+                    _error!,
+                    textAlign: TextAlign.center,
+                    style: TextStyle(color: Color(0xFFC23B3B), fontSize: 12),
+                  ),
                 Column(
                   spacing: 8,
                   children: [

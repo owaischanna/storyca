@@ -14,7 +14,11 @@ class UnlockStoryFooter extends StatefulWidget {
     required this.price,
     required this.onUnlock,
     this.unlocking = false,
+    this.signedOut = false,
   });
+
+  /// Nobody signed in: the button asks them to sign in instead of unlocking.
+  final bool signedOut;
 
   final num? price;
   final bool unlocking;
@@ -125,90 +129,122 @@ class _UnlockStoryFooterState extends State<UnlockStoryFooter> {
                       ),
                     ),
                   ),
-                  Expanded(
-                    child: GestureDetector(
-                      onTap: widget.unlocking ? null : widget.onUnlock,
-                      child: Row(
-                        children: [
-                          Expanded(
-                            child: Container(
-                              padding: EdgeInsets.symmetric(
-                                horizontal: 8,
-                                vertical: 12,
+                  if (widget.signedOut)
+                    Expanded(
+                      child: GestureDetector(
+                        onTap: () => context.push('/signin'),
+                        child: Container(
+                          padding: EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 12,
+                          ),
+                          decoration: BoxDecoration(
+                            gradient: defaultGradientTTB50,
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            spacing: 8,
+                            children: [
+                              Icon(
+                                Remix.lock_2_line,
+                                size: 16,
+                                color: Colors.white,
                               ),
-                              decoration: BoxDecoration(
-                                gradient: defaultGradientTTB,
-                                borderRadius: BorderRadius.only(
-                                  topLeft: Radius.circular(6),
-                                  bottomLeft: Radius.circular(6),
+                              Text('Sign in to Continue', style: whiteF16TS),
+                            ],
+                          ),
+                        ),
+                      ),
+                    )
+                  else
+                    Expanded(
+                      child: GestureDetector(
+                        onTap: widget.unlocking ? null : widget.onUnlock,
+                        child: Row(
+                          children: [
+                            Expanded(
+                              child: Container(
+                                padding: EdgeInsets.symmetric(
+                                  horizontal: 8,
+                                  vertical: 12,
+                                ),
+                                decoration: BoxDecoration(
+                                  gradient: defaultGradientTTB,
+                                  borderRadius: BorderRadius.only(
+                                    topLeft: Radius.circular(6),
+                                    bottomLeft: Radius.circular(6),
+                                  ),
+                                ),
+                                child: Row(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  spacing: 8,
+                                  children: [
+                                    Icon(
+                                      Remix.lock_2_line,
+                                      size: 16,
+                                      color: Colors.white,
+                                    ),
+                                    Text(
+                                      widget.unlocking
+                                          ? 'Unlocking…'
+                                          : 'Unlock Story',
+                                      style: whiteF16TS,
+                                    ),
+                                  ],
                                 ),
                               ),
-                              child: Row(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                spacing: 8,
+                            ),
+                            SizedBox(
+                              width: 70,
+                              child: Stack(
                                 children: [
-                                  Icon(
-                                    Remix.lock_2_line,
-                                    size: 16,
-                                    color: Colors.white,
+                                  Container(
+                                    padding: EdgeInsets.symmetric(
+                                      horizontal: 8,
+                                      vertical: 12,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      gradient: defaultGradientTTB,
+                                      borderRadius: BorderRadius.only(
+                                        topRight: Radius.circular(6),
+                                        bottomRight: Radius.circular(6),
+                                      ),
+                                    ),
+                                    child: Row(
+                                      spacing: 8,
+                                      mainAxisAlignment:
+                                          MainAxisAlignment.center,
+                                      children: [
+                                        Image.asset(aCoinIMG, width: 16),
+                                        Text(
+                                          widget.price == null
+                                              ? '—'
+                                              : widget.price!.toStringAsFixed(
+                                                  widget.price! % 1 == 0
+                                                      ? 0
+                                                      : 1,
+                                                ),
+                                          style: whiteF16TS,
+                                        ),
+                                      ],
+                                    ),
                                   ),
-                                  Text(
-                                    widget.unlocking
-                                        ? 'Unlocking…'
-                                        : 'Unlock Story',
-                                    style: whiteF16TS,
-                                  ),
+                                  if (widget.unlocking)
+                                    Container(
+                                      width: 70,
+                                      height: 45.4,
+                                      decoration: BoxDecoration(
+                                        color: Color.fromRGBO(0, 0, 0, 0.15),
+                                      ),
+                                    ),
                                 ],
                               ),
                             ),
-                          ),
-                          SizedBox(
-                            width: 70,
-                            child: Stack(
-                              children: [
-                                Container(
-                                  padding: EdgeInsets.symmetric(
-                                    horizontal: 8,
-                                    vertical: 12,
-                                  ),
-                                  decoration: BoxDecoration(
-                                    gradient: defaultGradientTTB,
-                                    borderRadius: BorderRadius.only(
-                                      topRight: Radius.circular(6),
-                                      bottomRight: Radius.circular(6),
-                                    ),
-                                  ),
-                                  child: Row(
-                                    spacing: 8,
-                                    mainAxisAlignment: MainAxisAlignment.center,
-                                    children: [
-                                      Image.asset(aCoinIMG, width: 16),
-                                      Text(
-                                        widget.price == null
-                                            ? '—'
-                                            : widget.price!.toStringAsFixed(
-                                                widget.price! % 1 == 0 ? 0 : 1,
-                                              ),
-                                        style: whiteF16TS,
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                                if (widget.unlocking)
-                                  Container(
-                                    width: 70,
-                                    height: 45.4,
-                                    decoration: BoxDecoration(
-                                      color: Color.fromRGBO(0, 0, 0, 0.15),
-                                    ),
-                                  ),
-                              ],
-                            ),
-                          ),
-                        ],
+                          ],
+                        ),
                       ),
                     ),
-                  ),
                 ],
               ),
               Row(
@@ -216,12 +252,16 @@ class _UnlockStoryFooterState extends State<UnlockStoryFooter> {
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
                   Icon(
-                    Remix.shield_check_line,
+                    widget.signedOut
+                        ? Remix.lock_2_line
+                        : Remix.shield_check_line,
                     color: Color(secondaryCOLR),
                     size: 12,
                   ),
                   Text(
-                    'Secure payment. Your progress is saved and synced.',
+                    widget.signedOut
+                        ? 'Sign in is required to unlock this book.'
+                        : 'Secure payment. Your progress is saved and synced.',
                     style: secondaryF10TS,
                   ),
                 ],

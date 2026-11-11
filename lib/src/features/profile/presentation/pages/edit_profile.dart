@@ -94,23 +94,39 @@ class _EditProfileState extends State<EditProfile> {
     }
   }
 
+  /// Each tab passes only its own fields. The save replaces the WHOLE
+  /// profile, so the latest copy is re-read first and every field the tab
+  /// didn't touch is resent as the server has it — saving one tab must
+  /// never wipe the other (or an edit made on the website meanwhile).
   Future<void> _save({
-    required String name,
-    required String username,
-    required String email,
+    String? name,
+    String? username,
+    String? email,
     String? phone,
     String? aboutMe,
+    String? location,
+    String? language,
+    String? availability,
+    String? aboutMyBooks,
+    String? toMyReaders,
   }) async {
     final token = await authService.getToken();
     if (token == null) return;
     try {
+      final current = await usersRepository.me(token);
       await usersRepository.updateProfile(
         token,
+        current: current,
         name: name,
         username: username,
         email: email,
         phone: phone,
         aboutMe: aboutMe,
+        location: location,
+        language: language,
+        availability: availability,
+        aboutMyBooks: aboutMyBooks,
+        toMyReaders: toMyReaders,
       );
       if (!mounted) return;
       AppSnackbar.success(context, 'Profile updated.');
@@ -393,7 +409,7 @@ class _EditProfileState extends State<EditProfile> {
                 else
                   Visibility(
                     visible: selectedTab == 'Basic',
-                    replacement: ExtrasProfileForm(),
+                    replacement: ExtrasProfileForm(user: _user!, onSaved: _save),
                     child: BasicProfileForm(user: _user!, onSaved: _save),
                   ),
 

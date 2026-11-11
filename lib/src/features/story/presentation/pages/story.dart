@@ -22,11 +22,12 @@ import 'package:storryca/src/core/widgets/error_state.dart';
 import 'package:storryca/src/core/widgets/gradient_button.dart';
 import 'package:storryca/src/core/widgets/loading_state.dart';
 import 'package:storryca/src/core/widgets/sign_in_redirect.dart';
+import 'package:storryca/src/features/story/presentation/widgets/novel_trailer.dart';
 import 'package:storryca/src/features/story/presentation/widgets/story_chapters_tab.dart';
 import 'package:storryca/src/features/story/presentation/widgets/story_recommended_tab.dart';
 import 'package:storryca/src/features/story/presentation/widgets/story_reviews_tab.dart';
 import 'package:storryca/src/features/story/presentation/widgets/story_unlocked.dart';
-import 'package:storryca/src/features/story/presentation/widgets/unlock_story.dart';
+import 'package:storryca/src/features/story/presentation/widgets/guest_story_footer.dart';
 import 'package:storryca/src/features/story/presentation/widgets/unlock_story_footer.dart';
 
 class Story extends StatefulWidget {
@@ -54,8 +55,7 @@ class _LazyTab extends StatefulWidget {
   State<_LazyTab> createState() => _LazyTabState();
 }
 
-class _LazyTabState extends State<_LazyTab>
-    with AutomaticKeepAliveClientMixin {
+class _LazyTabState extends State<_LazyTab> with AutomaticKeepAliveClientMixin {
   bool _visited = false;
   TabController? _controller;
 
@@ -270,7 +270,9 @@ class _StoryState extends State<Story> {
         // so this must not fall back to true just because there's nothing
         // to check yet (that previously made the empty-book case render as
         // if it were unlocked instead of being hidden below).
-        _isUnlocked = chapters.isNotEmpty && !chapters.first.locked;
+        // The opening chapters are free for everyone now, so the book only
+        // counts as unlocked when no chapter is locked.
+        _isUnlocked = chapters.isNotEmpty && !chapters.any((c) => c.locked);
       });
     } on ApiException {
       // Non-fatal: the story itself already loaded, so leave the unlock
@@ -318,7 +320,9 @@ class _StoryState extends State<Story> {
     if (_error != null) {
       return Scaffold(
         backgroundColor: Color(0xFF020004),
-        body: SafeArea(child: ErrorState(message: _error!, onRetry: _load)),
+        body: SafeArea(
+          child: ErrorState(message: _error!, onRetry: _load),
+        ),
       );
     }
     if (_story == null) {
@@ -489,29 +493,31 @@ class _StoryState extends State<Story> {
                                 ),
                                 // Not offered on the reader's own story.
                                 if (_authorFollow?.isSelf != true)
-                                PopupMenuItem(
-                                  height: 40,
-                                  value: 'block',
-                                  child: Row(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.center,
-                                    spacing: 8,
-                                    children: [
-                                      Icon(
-                                        Remix.user_unfollow_line,
-                                        color: Color(0xffC23B3B),
-                                        size: 16,
-                                      ),
-                                      Text(
-                                        _authorBlocked ? 'Unblock Author' : 'Block Author',
-                                        style: TextStyle(
+                                  PopupMenuItem(
+                                    height: 40,
+                                    value: 'block',
+                                    child: Row(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.center,
+                                      spacing: 8,
+                                      children: [
+                                        Icon(
+                                          Remix.user_unfollow_line,
                                           color: Color(0xffC23B3B),
-                                          fontSize: 14,
+                                          size: 16,
                                         ),
-                                      ),
-                                    ],
+                                        Text(
+                                          _authorBlocked
+                                              ? 'Unblock Author'
+                                              : 'Block Author',
+                                          style: TextStyle(
+                                            color: Color(0xffC23B3B),
+                                            fontSize: 14,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
                                   ),
-                                ),
                               ];
                             },
                           ),
@@ -572,7 +578,7 @@ class _StoryState extends State<Story> {
                                 Row(
                                   spacing: 4,
                                   children: [
-                                    ...List.generate(story.ratings.round(), (
+                                    ...List.generate(story.ratingAvg.round(), (
                                       index,
                                     ) {
                                       return ShaderMask(
@@ -588,7 +594,7 @@ class _StoryState extends State<Story> {
                                       );
                                     }),
                                     ...List.generate(
-                                      5 - story.ratings.round(),
+                                      5 - story.ratingAvg.round(),
                                       (index) {
                                         return Icon(
                                           Remix.star_fill,
@@ -600,8 +606,8 @@ class _StoryState extends State<Story> {
                                   ],
                                 ),
                                 Text(
-                                  story.ratings > 0
-                                      ? story.ratings.toStringAsFixed(1)
+                                  story.ratingAvg > 0
+                                      ? story.ratingAvg.toStringAsFixed(1)
                                       : 'No ratings yet',
                                   style: defaultTextStyle,
                                 ),
@@ -644,15 +650,10 @@ class _StoryState extends State<Story> {
                 if (!_hasNoChapters)
                   Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 16),
-                    child: Visibility(
-                      visible: _isUnlocked,
-                      replacement: UnlockStory(
-                        unlockStory: unlockStory,
-                        price: _bookPrice,
-                        unlocking: _unlocking,
-                      ),
-                      child: StoryUnlocked(storyId: story.id),
-                    ),
+                    // Start Reading for everyone — the free chapters open
+                    // straight away and the first locked one asks to sign
+                    // in or unlock. Signed in, Unlock Story stays below.
+                    child: StoryUnlocked(storyId: story.id),
                   ),
 
                 // INFO
@@ -703,7 +704,10 @@ class _StoryState extends State<Story> {
                           ),
                           Column(
                             children: [
-                              Text(compactCount(story.views), style: whiteF14TS),
+                              Text(
+                                compactCount(story.views),
+                                style: whiteF14TS,
+                              ),
                               Text('Views', style: defaultTextStyle),
                             ],
                           ),
@@ -730,7 +734,10 @@ class _StoryState extends State<Story> {
                           ),
                           Column(
                             children: [
-                              Text(compactCount(story.reads), style: whiteF14TS),
+                              Text(
+                                compactCount(story.reads),
+                                style: whiteF14TS,
+                              ),
                               Text('Reads', style: defaultTextStyle),
                             ],
                           ),
@@ -891,6 +898,15 @@ class _StoryState extends State<Story> {
                   ),
                 ),
 
+                // NOVEL TRAILER — no section at all when there isn't one.
+                if (story.trailer != null)
+                  NovelTrailer(
+                    trailer: story.trailer!,
+                    posterUrl: (story.cover ?? '').isEmpty
+                        ? null
+                        : coverUrl(story.cover, fallbackAsset: noStoryIMG),
+                  ),
+
                 // AUTHOR
                 if (author != null)
                   Padding(
@@ -919,8 +935,9 @@ class _StoryState extends State<Story> {
                                 ),
                               ),
                               GestureDetector(
-                                onTap: () =>
-                                    context.push('/author-profile/${author.id}'),
+                                onTap: () => context.push(
+                                  '/author-profile/${author.id}',
+                                ),
                                 child: Icon(
                                   Remix.arrow_right_s_line,
                                   size: 18,
@@ -1194,13 +1211,16 @@ class _StoryState extends State<Story> {
           ),
         ),
       ),
-      bottomNavigationBar: (_isUnlocked || _hasNoChapters)
+      bottomNavigationBar: _token == null
+          ? const GuestStoryFooter()
+          : (_isUnlocked || _hasNoChapters)
           ? SizedBox.shrink()
           : UnlockStoryFooter(
               key: ValueKey(_refreshTick),
               price: _bookPrice,
               unlocking: _unlocking,
               onUnlock: unlockStory,
+              signedOut: _token == null,
             ),
     );
   }

@@ -930,7 +930,16 @@ class _RankState extends State<Rank> {
                             child: Row(
                               mainAxisAlignment: MainAxisAlignment.spaceBetween,
                               children: [
-                                ...contentRatings.map((item) {
+                                // 18+ only for readers who said they're
+                                // 18 or over; the server hides those books
+                                // from everyone else anyway.
+                                ...contentRatings
+                                    .where(
+                                      (r) =>
+                                          r != '18+' ||
+                                          usersRepository.isAdult.value,
+                                    )
+                                    .map((item) {
                                   return ContentRating(
                                     item: item,
                                     selectedContentRating:

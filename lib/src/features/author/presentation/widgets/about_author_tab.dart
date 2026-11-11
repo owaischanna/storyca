@@ -49,6 +49,37 @@ class AboutAuthorTab extends StatelessWidget {
             ],
           ),
 
+          // ABOUT MY BOOKS — only when the author has written it.
+          if (author.aboutMyBooks.trim().isNotEmpty)
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  spacing: 8,
+                  children: [
+                    ShaderMask(
+                      shaderCallback: (bounds) {
+                        return defaultGradientTTB.createShader(bounds);
+                      },
+                      child: Icon(
+                        Remix.book_2_fill,
+                        size: 16,
+                        color: Colors.white,
+                      ),
+                    ),
+                    Text(
+                      'About My Books',
+                      style: GoogleFonts.playfair(
+                        color: Colors.white,
+                        fontSize: 18,
+                      ),
+                    ),
+                  ],
+                ),
+                Text(author.aboutMyBooks, style: defaultTextStyle),
+              ],
+            ),
+
           // SEPERATOR
           Row(
             spacing: 8,

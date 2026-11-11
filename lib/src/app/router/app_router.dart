@@ -1,6 +1,7 @@
 import 'package:go_router/go_router.dart';
 import 'package:storryca/src/app/router/route_names.dart';
 import 'package:storryca/src/core/network/models/follow_api_model.dart';
+import 'package:storryca/src/core/network/models/story_api_model.dart';
 import 'package:storryca/src/features/account/presentation/pages/account_security.dart';
 import 'package:storryca/src/features/account/presentation/pages/active_sessions.dart';
 import 'package:storryca/src/features/account/presentation/pages/change_password.dart';
@@ -247,7 +248,10 @@ GoRouter createRouter() {
         name: 'read',
         builder: (context, state) {
           final id = int.tryParse(state.pathParameters['id'] ?? '') ?? 0;
-          return Read(id: id);
+          return Read(
+            id: id,
+            storyId: state.extra is int ? state.extra as int : null,
+          );
         },
       ),
       GoRoute(
@@ -273,7 +277,11 @@ GoRouter createRouter() {
       GoRoute(
         path: RouteNames.newStory,
         name: 'new-story',
-        builder: (context, state) => const NewStory(),
+        builder: (context, state) => NewStory(
+          story: state.extra is StoryApiModel
+              ? state.extra as StoryApiModel
+              : null,
+        ),
       ),
       GoRoute(
         path: '${RouteNames.storyCreated}/:storyId',

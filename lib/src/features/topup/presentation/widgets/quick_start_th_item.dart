@@ -14,37 +14,36 @@ class QuickStartTHItem extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Expanded(
-      child: Container(
-        padding: EdgeInsets.all(8),
-        decoration: BoxDecoration(
-          border: Border.all(
-            width: 1,
-            color: Color.fromRGBO(181, 77, 232, 0.3),
+    // Not wrapped in Expanded here: the caller wraps it in a GestureDetector,
+    // so Expanded must sit outside that (a Row's direct child) — inside, it
+    // threw "Incorrect use of ParentDataWidget" and release builds drew the
+    // whole sheet as a grey box.
+    return Container(
+      padding: EdgeInsets.all(8),
+      decoration: BoxDecoration(
+        border: Border.all(width: 1, color: Color.fromRGBO(181, 77, 232, 0.3)),
+        borderRadius: BorderRadius.circular(5),
+        color: isSelected
+            ? Color.fromRGBO(181, 77, 232, 1)
+            : Colors.transparent,
+      ),
+      child: Column(
+        spacing: 4,
+        children: [
+          Icon(
+            icon,
+            color: isSelected ? Colors.white : Color(0xffDFBDFF),
+            size: 16,
           ),
-          borderRadius: BorderRadius.circular(5),
-          color: isSelected
-              ? Color.fromRGBO(181, 77, 232, 1)
-              : Colors.transparent,
-        ),
-        child: Column(
-          spacing: 4,
-          children: [
-            Icon(
-              icon,
+          Text(
+            label,
+            textAlign: TextAlign.center,
+            style: TextStyle(
               color: isSelected ? Colors.white : Color(0xffDFBDFF),
-              size: 16,
+              fontSize: 12,
             ),
-            Text(
-              label,
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                color: isSelected ? Colors.white : Color(0xffDFBDFF),
-                fontSize: 12,
-              ),
-            ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }

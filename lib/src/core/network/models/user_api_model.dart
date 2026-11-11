@@ -18,6 +18,11 @@ class UserApiModel {
     required this.unreadNotifications,
     required this.followers,
     required this.followings,
+    this.location = '',
+    this.language = '',
+    this.availability = '',
+    this.aboutMyBooks = '',
+    this.toMyReaders = '',
   });
 
   final int id;
@@ -38,6 +43,13 @@ class UserApiModel {
   final int unreadNotifications;
   final int followers;
   final int followings;
+
+  /// The Edit Profile "Extras" tab, exactly as the server stores them.
+  final String location;
+  final String language;
+  final String availability;
+  final String aboutMyBooks;
+  final String toMyReaders;
 
   String get displayName => (name != null && name!.isNotEmpty) ? name! : email;
 
@@ -63,6 +75,11 @@ class UserApiModel {
     unreadNotifications: unreadNotifications,
     followers: followers,
     followings: followings,
+    location: location,
+    language: language,
+    availability: availability,
+    aboutMyBooks: aboutMyBooks,
+    toMyReaders: toMyReaders,
   );
 
   factory UserApiModel.fromJson(Map<String, dynamic> json) => UserApiModel(
@@ -84,5 +101,10 @@ class UserApiModel {
     unreadNotifications: json['unread_notifications'] as int? ?? 0,
     followers: json['followers'] as int? ?? 0,
     followings: json['followings'] as int? ?? 0,
+    location: json['location'] as String? ?? '',
+    language: json['language'] as String? ?? '',
+    availability: json['availability'] as String? ?? '',
+    aboutMyBooks: json['about_my_books'] as String? ?? '',
+    toMyReaders: json['to_my_readers'] as String? ?? '',
   );
 }

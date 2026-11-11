@@ -31,6 +31,12 @@ class ApiException implements Exception {
   /// In rather than showing this as a failure.
   bool get needsSignIn => code == 'not_signed_in' || code == 'session_expired';
 
+  /// A chapter past the free ones: `sign_in_required` (401, nobody signed
+  /// in) or `unlock_required` (402, signed in but the book isn't unlocked).
+  /// [data] then carries `title`, `preview`, `free_chapters` and `price`.
+  bool get isChapterLocked =>
+      code == 'sign_in_required' || code == 'unlock_required';
+
   final String message;
   final int? statusCode;
 
@@ -83,6 +89,17 @@ class ApiClient {
   /// never has to notice and sign out manually first.
   void Function()? onUnauthorized;
 
+  /// The signed-in reader's token, set by [AuthService]. Used by calls whose
+  /// RESULTS depend on who is asking (which books an 18+ reader may see)
+  /// even though they also work signed out — see [readerToken].
+  Future<String?> Function()? tokenProvider;
+
+  /// The current reader's token, or null when signed out. Without it those
+  /// calls look anonymous, and the server falls back to a login cookie that
+  /// is lost on app restart — which made 18+ books appear and vanish.
+  Future<String?> readerToken() async =>
+      tokenProvider == null ? null : await tokenProvider!();
+
   static const String baseUrl = 'https://storryca.com/api';
 
   final http.Client _httpClient;
@@ -96,11 +113,39 @@ class ApiClient {
   final Map<String, String> _cookies = {};
 
   /// Clears the session cookie on logout so the next login starts clean.
-  void clearCookies() => _cookies.clear();
+  /// [signedOutToken] is the token just retired: a reply to a request still
+  /// carrying it (e.g. the push unregister sent right after sign-out) must
+  /// not hand the jar a session cookie again — the server would keep
+  /// treating this device as the old account (it decides free vs. locked
+  /// chapters, and 18+ books, from that cookie).
+  void clearCookies({String? signedOutToken}) {
+    _cookies.clear();
+    if (signedOutToken != null) _retiredTokens.add(signedOutToken);
+  }
+
+  final Set<String> _retiredTokens = {};
+
+  /// What a Storryca address outside the JSON API (e.g. the chapter-audio
+  /// stream the website plays) needs to recognise the reader: their token,
+  /// the login session cookie and the app's User-Agent.
+  Future<Map<String, String>> readerHeaders() async {
+    final token = await readerToken();
+    return {
+      if (token != null) 'Authorization': 'Bearer $token',
+      ..._cookieHeader,
+      'User-Agent': await _ua(),
+    };
+  }
 
   void _updateCookiesFromResponse(http.Response response) {
     final setCookie = response.headers['set-cookie'];
     if (setCookie == null) return;
+    final auth = response.request?.headers['Authorization'];
+    if (auth != null &&
+        auth.startsWith('Bearer ') &&
+        _retiredTokens.contains(auth.substring(7))) {
+      return;
+    }
     // Multiple Set-Cookie headers arrive comma-joined; a plain split on ","
     // would also cut through the comma inside an Expires date, so this only
     // splits where a new "name=" pair actually starts.
@@ -284,6 +329,13 @@ class ApiClient {
     String? filePath,
     Map<String, String>? fields,
     String? token,
+    // More file parts alongside [fileField], as {field: path} — e.g. a
+    // story's trailer next to its cover.
+    Map<String, String>? extraFiles,
+    // For big uploads (a trailer can be 30MB) — and [retry] false so a slow
+    // upload is never silently sent a second time.
+    Duration? timeout,
+    bool retry = true,
   }) async {
     final uri = Uri.parse('$baseUrl$path');
 
@@ -301,7 +353,14 @@ class ApiClient {
             await http.MultipartFile.fromPath(fileField, filePath),
           );
         }
-        final streamed = await _httpClient.send(request).timeout(_requestTimeout);
+        for (final file in (extraFiles ?? const <String, String>{}).entries) {
+          request.files.add(
+            await http.MultipartFile.fromPath(file.key, file.value),
+          );
+        }
+        final streamed = await _httpClient
+            .send(request)
+            .timeout(timeout ?? _requestTimeout);
         return await http.Response.fromStream(streamed);
       } on TimeoutException {
         throw ApiException(
@@ -313,6 +372,9 @@ class ApiClient {
       }
     }
 
+    if (!retry) {
+      return _decode(await send(), authed: token != null);
+    }
     return _decodeWithRetry(send, authed: token != null);
   }
 
@@ -388,7 +450,10 @@ class ApiClient {
       // screen shows a generic error instead of going back to Sign In.
       // not_signed_in only counts when a token was actually sent — a call
       // that simply omitted it mustn't sign the reader out.
-      if (response.statusCode == 401 ||
+      // A 401 `sign_in_required` is a locked chapter asked for by someone
+      // with no account, not an expired session — never sign anyone out
+      // over it.
+      if ((response.statusCode == 401 && code != 'sign_in_required') ||
           code == 'session_expired' ||
           (authed && code == 'not_signed_in')) {
         onUnauthorized?.call();

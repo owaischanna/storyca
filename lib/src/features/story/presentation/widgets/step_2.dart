@@ -24,7 +24,12 @@ class Step2 extends StatelessWidget {
     required this.updateTargetAudience,
     required this.languages,
     required this.regions,
+    this.initialTags = const [],
   });
+
+  /// Tags already chosen — the story's own when editing, or the ones typed
+  /// before stepping away — so returning to this step doesn't lose them.
+  final List<String> initialTags;
 
   final void Function(int) updateStep;
   final void Function() updateState;
@@ -229,6 +234,7 @@ class Step2 extends StatelessWidget {
                   ),
                   TextFieldTags(
                     textfieldTagsController: tagsController,
+                    initialTags: initialTags,
                     textSeparators: [' ', ','],
                     inputFieldBuilder: (context, values) {
                       const maxTags = 3;

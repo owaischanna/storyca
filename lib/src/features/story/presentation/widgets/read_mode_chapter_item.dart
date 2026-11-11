@@ -13,7 +13,11 @@ class ReadModeChapterItem extends StatelessWidget {
     required this.name,
     required this.date,
     required this.isCurrent,
+    this.storyId,
   });
+
+  /// The chapter's book, so a locked chapter opened from here can unlock.
+  final int? storyId;
 
   final int id;
   final int index;
@@ -26,7 +30,7 @@ class ReadModeChapterItem extends StatelessWidget {
     return GestureDetector(
       onTap: () {
         context.pop();
-        context.pushReplacement('/read/$id');
+        context.pushReplacement('/read/$id', extra: storyId);
       },
       child: Container(
       padding: EdgeInsets.all(8),

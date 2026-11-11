@@ -13,16 +13,29 @@ import 'package:storryca/src/core/widgets/gradient_button.dart';
 /// One player shared by every chapter on the reading screen — starting a
 /// chapter stops whichever was playing. Owned and disposed by the reader.
 class ChapterAudioPlayer {
-  final AudioPlayer player = AudioPlayer();
+  // Headers sent natively by Android's player rather than through
+  // just_audio's local http://127.0.0.1 proxy, which this app's cleartext
+  // policy blocks.
+  final AudioPlayer player = AudioPlayer(useProxyForRequestHeaders: false);
   final ValueNotifier<int?> activeChapter = ValueNotifier(null);
 
-  /// [url] is the signed link, used exactly as given — no headers.
+  /// [url] is used exactly as given. When it points at storryca.com itself
+  /// (the website's chapter-audio stream, which refuses anyone it can't
+  /// recognise with "Please sign in to listen.") the reader's token, login
+  /// cookie and User-Agent go with it; links on any other host (e.g. signed
+  /// storage links) are sent bare, as before.
   Future<void> play(int chapterId, String url) async {
     if (activeChapter.value != chapterId) {
       await player.stop();
       activeChapter.value = chapterId;
       try {
-        await player.setUrl(url);
+        final host = Uri.tryParse(url)?.host ?? '';
+        final ownSite =
+            host == 'storryca.com' || host.endsWith('.storryca.com');
+        await player.setUrl(
+          url,
+          headers: ownSite ? await apiClient.readerHeaders() : null,
+        );
       } catch (_) {
         activeChapter.value = null;
         rethrow;
@@ -40,7 +53,10 @@ class ChapterAudioPlayer {
   }
 }
 
-enum _AudioState { loading, hidden, notReady, preparing, ready }
+/// [needsBook]: a free chapter of a book that isn't unlocked — the text is
+/// free, narration isn't (it's made by a paid service), so Listen is shown
+/// explaining that instead of failing.
+enum _AudioState { loading, hidden, notReady, preparing, ready, needsBook }
 
 /// "Listen to this chapter", above the chapter text. Asks the server (GET,
 /// free) whether narration exists. If it does, it plays. If not, a Listen
@@ -94,16 +110,80 @@ class _ChapterAudioBarState extends State<ChapterAudioBar> {
       setState(() {
         _audio = audio;
         _state = audio == null
-            ? _AudioState.hidden
+            // Signed out: reading a free chapter, nothing unlocked.
+            ? _AudioState.needsBook
             : audio.ready
             ? _AudioState.ready
             : _AudioState.notReady;
+        if (audio == null) {
+          _message = 'Sign in and unlock this book to listen.';
+        }
       });
-    } on ApiException {
-      // 402 locked book, 404 draft/unpublished, or a network failure — no
-      // audio controls at all rather than an error on the reading page.
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      if (e.isPaymentRequired) {
+        // A free chapter of a book that isn't unlocked.
+        setState(() {
+          _state = _AudioState.needsBook;
+          _message =
+              "Listening needs the book unlocked — narration isn't "
+              "included with the free chapters.";
+        });
+      } else {
+        // 404 draft/unpublished, or a network failure — no audio controls
+        // at all rather than an error on the reading page.
+        setState(() => _state = _AudioState.hidden);
+      }
+    } catch (_) {
       if (mounted) setState(() => _state = _AudioState.hidden);
     }
+    if (_audio?.pending ?? false) _waitUntilReady();
+  }
+
+  /// Narration still being made (the server answered `pending`): check with
+  /// the free GET every 5 s, for up to 2 minutes, then play. Never POSTs.
+  int _waits = 0;
+  void _waitUntilReady() {
+    _recheck?.cancel();
+    if (_waits >= 24) {
+      if (mounted) {
+        setState(() {
+          _state = _AudioState.notReady;
+          _message = 'Not ready yet. You can press Listen again.';
+        });
+      }
+      return;
+    }
+    _waits++;
+    if (mounted) {
+      setState(() {
+        _state = _AudioState.preparing;
+        _message = null;
+      });
+    }
+    _recheck = Timer(const Duration(seconds: 5), () async {
+      try {
+        final audio = await _get();
+        if (!mounted) return;
+        if (audio?.ready ?? false) {
+          setState(() {
+            _audio = audio;
+            _state = _AudioState.ready;
+          });
+          _play();
+        } else if (audio?.pending ?? false) {
+          _waitUntilReady();
+        } else {
+          setState(() {
+            _audio = audio;
+            _state = _AudioState.notReady;
+            _message = 'Audio could not be prepared. Press Listen to try again.';
+          });
+        }
+      } catch (_) {
+        if (mounted) _waitUntilReady();
+      }
+    });
   }
 
   /// Fired ONLY by the reader pressing Listen.
@@ -122,7 +202,13 @@ class _ChapterAudioBarState extends State<ChapterAudioBar> {
         _audio = audio;
         _state = audio.ready ? _AudioState.ready : _AudioState.notReady;
       });
-      if (audio.ready) _play();
+      if (audio.ready) {
+        _play();
+      } else {
+        // Accepted but still being made — wait for it with free GETs.
+        _waits = 0;
+        _waitUntilReady();
+      }
     } on ApiException catch (e) {
       if (!mounted) return;
       switch (e.statusCode) {
@@ -139,7 +225,12 @@ class _ChapterAudioBarState extends State<ChapterAudioBar> {
             _message = e.message;
           });
         case 402:
-          setState(() => _state = _AudioState.hidden);
+          setState(() {
+            _state = _AudioState.needsBook;
+            _message =
+                "Listening needs the book unlocked — narration isn't "
+                "included with the free chapters.";
+          });
         case 503:
           setState(() {
             _unavailableCount++;
@@ -160,6 +251,14 @@ class _ChapterAudioBarState extends State<ChapterAudioBar> {
               _message = e.message;
             });
           }
+      }
+    } catch (_) {
+      // An answer the app couldn't read — say so instead of going quiet.
+      if (mounted) {
+        setState(() {
+          _state = _AudioState.notReady;
+          _message = 'Audio is not available right now.';
+        });
       }
     }
   }
@@ -256,6 +355,8 @@ class _ChapterAudioBarState extends State<ChapterAudioBar> {
                           : 'Ready'
                     : _state == _AudioState.preparing
                     ? 'Preparing…'
+                    : _state == _AudioState.needsBook
+                    ? 'Needs the book'
                     : 'Not made yet',
                 style: defaultTextStyle10,
               ),
@@ -287,6 +388,25 @@ class _ChapterAudioBarState extends State<ChapterAudioBar> {
                   ),
                 ),
               ],
+            )
+          else if (_state == _AudioState.needsBook)
+            Opacity(
+              opacity: 0.5,
+              child: SizedBox(
+                height: 36,
+                child: GradientButton(
+                  label: 'Listen',
+                  hasIcon: true,
+                  icon: Remix.lock_2_line,
+                  fontSize: 13,
+                  iconSize: 16,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 6,
+                  ),
+                  onPressed: () {},
+                ),
+              ),
             )
           else if (_canListen)
             SizedBox(

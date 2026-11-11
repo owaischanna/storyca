@@ -15,13 +15,18 @@ import 'package:storryca/src/core/widgets/secure_screen.dart';
 import 'package:storryca/src/core/widgets/sign_in_redirect.dart';
 import 'package:storryca/src/features/story/presentation/widgets/chapter_audio_bar.dart';
 import 'package:storryca/src/features/story/presentation/widgets/chapters_side_panel.dart';
+import 'package:storryca/src/features/story/presentation/widgets/locked_chapter.dart';
 import 'package:storryca/src/features/story/presentation/widgets/read_mode_appbar.dart';
 import 'package:storryca/src/features/story/presentation/widgets/story_read_item.dart';
 
 class Read extends StatefulWidget {
-  const Read({super.key, required this.id});
+  const Read({super.key, required this.id, this.storyId});
 
   final int id;
+
+  /// The chapter's book, when the caller knows it — a locked chapter's
+  /// refusal doesn't say which book it belongs to, and Unlock needs it.
+  final int? storyId;
 
   @override
   State<Read> createState() => _ReadState();
@@ -185,6 +190,20 @@ class _ReadState extends State<Read> {
   /// unlock panel instead of offered a "retry".
   bool _locked = false;
 
+  /// Opened on a chapter past the free ones: its title and opening, shown
+  /// with the Chapter Locked panel instead of the chapter.
+  ChapterLock? _lock;
+
+  /// The first locked chapter after the readable ones, shown at the end of
+  /// the scroll instead of loading an empty chapter.
+  ChapterLock? _nextLock;
+
+  /// The opened locked chapter's number, from the book's chapter list.
+  int? _lockNumber;
+  bool _loadingNextLock = false;
+  bool _unlocking = false;
+  int? _storyId;
+
   String? _token;
 
   /// Index of the chapter this screen was opened on, within the story's
@@ -216,7 +235,11 @@ class _ReadState extends State<Read> {
     setState(() {
       _error = null;
       _locked = false;
+      _lock = null;
+      _nextLock = null;
+      _lockNumber = null;
     });
+    _storyId = widget.storyId;
     _token = await authService.getToken();
     try {
       final chapter = await chaptersRepository.byId(widget.id, token: _token);
@@ -249,6 +272,7 @@ class _ReadState extends State<Read> {
             })
             .catchError((_) {});
       }
+      _storyId = chapter.storyId;
       final startIndex = siblings.indexWhere((c) => c.id == chapter.id);
       setState(() {
         _chapter = chapter;
@@ -268,11 +292,93 @@ class _ReadState extends State<Read> {
       _recordProgress(globalIndex: _chapterIndex, finished: false);
       WidgetsBinding.instance.addPostFrameCallback((_) => _maybeRecordFinished());
       _recordReadCount(chapter);
+      _prepareNextLock();
     } on ApiException catch (e) {
+      if (e.isChapterLocked) {
+        // Past the free chapters: stay on the chapter and show its opening
+        // with the Chapter Locked panel.
+        setState(() => _lock = ChapterLock.fromException(e));
+        final storyId = widget.storyId;
+        if (storyId != null) {
+          chaptersRepository
+              .byStoryId(storyId, token: _token)
+              .then((chapters) {
+                final match = chapters.where((c) => c.id == widget.id);
+                if (mounted && match.isNotEmpty) {
+                  setState(() => _lockNumber = match.first.orderIndex);
+                }
+              })
+              .catchError((_) {});
+        }
+        if (storyId != null && _story == null) {
+          storiesRepository
+              .byId(storyId)
+              .then((story) {
+                if (mounted) setState(() => _story = story);
+              })
+              .catchError((_) {});
+        }
+        return;
+      }
       setState(() {
         _error = e.message;
         _locked = e.isPaymentRequired;
       });
+    }
+  }
+
+  /// How many chapters, from the one opened, can be read now — scrolling
+  /// stops at the first locked one (its text isn't sent).
+  int get _readable {
+    var count = 0;
+    for (final chapter in _siblings) {
+      if (chapter.locked) break;
+      count++;
+    }
+    return count == 0 ? 1 : count;
+  }
+
+  /// Once the last readable chapter is showing, fetch the next (locked)
+  /// one's title and opening for the Chapter Locked panel.
+  Future<void> _prepareNextLock() async {
+    if (_nextLock != null || _loadingNextLock) return;
+    if (_visibleCount < _readable || _readable >= _siblings.length) return;
+    _loadingNextLock = true;
+    try {
+      await chaptersRepository.byId(_siblings[_readable].id, token: _token);
+    } on ApiException catch (e) {
+      if (e.isChapterLocked && mounted) {
+        setState(() => _nextLock = ChapterLock.fromException(e));
+      }
+    } finally {
+      _loadingNextLock = false;
+    }
+  }
+
+  /// Unlocks the whole book, then opens [chapterId] — the locked chapter the
+  /// reader was stopped at.
+  Future<void> _unlock(int chapterId) async {
+    final token = _token;
+    final storyId = _storyId;
+    if (token == null) {
+      goToSignIn(context);
+      return;
+    }
+    if (storyId == null || _unlocking) return;
+    setState(() => _unlocking = true);
+    try {
+      await walletRepository.unlock(storyId, token);
+      if (!mounted) return;
+      context.pushReplacement('/read/$chapterId', extra: storyId);
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      setState(() => _unlocking = false);
+      if (e.isPaymentRequired) {
+        AppSnackbar.warning(context, e.message);
+        context.push('/topup');
+      } else {
+        AppSnackbar.error(context, e.message);
+      }
     }
   }
 
@@ -282,7 +388,7 @@ class _ReadState extends State<Read> {
   }
 
   void _maybeLoadNextChapter() {
-    if (_visibleCount >= _siblings.length) return;
+    if (_visibleCount >= _readable) return;
     if (_scrollController.position.pixels >=
         _scrollController.position.maxScrollExtent - 300) {
       setState(() => _visibleCount++);
@@ -291,6 +397,7 @@ class _ReadState extends State<Read> {
         finished: false,
       );
       _recordReadCount(_siblings[_visibleCount - 1]);
+      _prepareNextLock();
     }
   }
 
@@ -419,9 +526,19 @@ class _ReadState extends State<Read> {
                       label: _locked ? 'Go to Book' : 'Retry',
                       height: 300,
                     )
+                  else if (_lock != null)
+                    LockedChapter(
+                      lock: _lock!,
+                      chapterNumber: _lockNumber,
+                      fontSize: _fontSize,
+                      unlocking: _unlocking,
+                      onUnlock: _storyId == null
+                          ? null
+                          : () => _unlock(widget.id),
+                    )
                   else if (_chapter == null)
                     const LoadingState(height: 300)
-                  else
+                  else ...[
                     ..._siblings.take(_visibleCount).map((chapter) {
                       return StoryReadItem(
                         title: chapter.title,
@@ -439,6 +556,15 @@ class _ReadState extends State<Read> {
                               ),
                       );
                     }),
+                    if (_nextLock != null && _visibleCount >= _readable)
+                      LockedChapter(
+                        lock: _nextLock!,
+                        chapterNumber: _siblings[_readable].orderIndex,
+                        fontSize: _fontSize,
+                        unlocking: _unlocking,
+                        onUnlock: () => _unlock(_siblings[_readable].id),
+                      ),
+                  ],
                 ],
               ),
             ),

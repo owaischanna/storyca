@@ -27,6 +27,10 @@ class _SignUpState extends State<SignUp> {
   bool passwordVisibility = false;
   bool confirmPasswordVisibility = false;
   bool isAgreed = false;
+
+  /// The age question, as on the website. Unticked = under 18: books rated
+  /// 18+ stay hidden from this account.
+  bool isAdult = false;
   bool isSubmitting = false;
 
   void togglePasswordVisibility() {
@@ -66,7 +70,12 @@ class _SignUpState extends State<SignUp> {
     }
     setState(() => isSubmitting = true);
     try {
-      final result = await authService.register(email, password, confirmPassword);
+      final result = await authService.register(
+        email,
+        password,
+        confirmPassword,
+        isAdult: isAdult,
+      );
       if (!mounted) return;
       if (result.requiresEmailVerification) {
         context.go(
@@ -117,7 +126,13 @@ class _SignUpState extends State<SignUp> {
                   // HEADER
                   IconButton(
                     onPressed: () {
-                      context.pop();
+                      // Opened from onboarding's Login there is nothing to
+                      // go back to — go into the app instead of failing.
+                      if (context.canPop()) {
+                        context.pop();
+                      } else {
+                        context.go('/main/2');
+                      }
                     },
                     icon: Icon(Remix.arrow_left_s_line),
                     color: Colors.white,
@@ -305,6 +320,36 @@ class _SignUpState extends State<SignUp> {
                                             _openLegalPage('privacy-policy'),
                                     ),
                                   ],
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+
+                        // AGE
+                        Row(
+                          children: [
+                            Checkbox(
+                              materialTapTargetSize:
+                                  MaterialTapTargetSize.shrinkWrap,
+                              activeColor: Color(0xFF9110DE),
+                              side: BorderSide(
+                                width: 1,
+                                color: Color(primaryTextCOLR),
+                              ),
+                              value: isAdult,
+                              onChanged: (value) {
+                                setState(() => isAdult = !isAdult);
+                              },
+                            ),
+                            Expanded(
+                              child: Text(
+                                'I am 18 years of age or older. (Leave unticked '
+                                'if you are under 18 — you will not see books '
+                                'rated 18+.)',
+                                style: TextStyle(
+                                  color: Color(primaryTextCOLR),
+                                  fontSize: 12,
                                 ),
                               ),
                             ),

@@ -121,6 +121,9 @@ class _TopupState extends State<Topup> {
       case PlayBillingOutcomeType.error:
         setState(() => _purchasingCoins = null);
         AppSnackbar.error(context, outcome.message ?? 'The purchase failed.');
+      case PlayBillingOutcomeType.canceled:
+        // Backed out of Play's sheet — just make the packs tappable again.
+        setState(() => _purchasingCoins = null);
     }
   }
 
@@ -152,7 +155,11 @@ class _TopupState extends State<Topup> {
     }
     setState(() => _purchasingCoins = pack.coins.toInt());
     try {
-      await playBillingService.buy(product);
+      final started = await playBillingService.buy(product);
+      if (!started && mounted) {
+        setState(() => _purchasingCoins = null);
+        AppSnackbar.error(context, 'Could not start the purchase.');
+      }
     } catch (_) {
       if (mounted) {
         setState(() => _purchasingCoins = null);

@@ -16,7 +16,7 @@ StoryItemTypes storyItemFromApi(StoryApiModel story) => StoryItemTypes(
   reads: story.reads.toDouble(),
   periodReads: story.periodReads?.toDouble(),
   comments: 0,
-  rating: story.ratings.round(),
+  rating: story.ratingAvg.round(),
   ratingCount: 0,
   category: story.genre,
   currentChapter: 0,

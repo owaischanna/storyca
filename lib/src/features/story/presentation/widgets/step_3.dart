@@ -16,7 +16,11 @@ class Step3 extends StatefulWidget {
     required this.updateStep,
     this.cover,
     required this.updateSelectedImage,
+    this.trailer,
   });
+
+  /// The optional "Novel Trailer" field, shown under the cover.
+  final Widget? trailer;
 
   final void Function(int) updateStep;
   final dynamic cover;
@@ -345,6 +349,9 @@ class _Step3State extends State<Step3> {
                         ),
                 ],
               ),
+
+              // NOVEL TRAILER
+              ?widget.trailer,
             ],
           ),
 

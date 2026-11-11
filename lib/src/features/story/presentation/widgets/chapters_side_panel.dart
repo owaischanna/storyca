@@ -62,6 +62,7 @@ class ChaptersSidePanel extends StatelessWidget {
                         name: item.title,
                         date: '',
                         isCurrent: item.id == currentChapterId,
+                        storyId: item.storyId,
                       );
                     }),
                   ],

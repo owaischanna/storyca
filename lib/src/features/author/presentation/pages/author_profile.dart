@@ -31,6 +31,23 @@ class AuthorProfile extends StatefulWidget {
 }
 
 class _AuthorProfileState extends State<AuthorProfile> {
+  static const _genreColors = [
+    Color(0xffFF4DFF),
+    Color(0xff00B076),
+    Color(0xffC384FF),
+  ];
+
+  List<String> get _genres {
+    final seen = <String>[];
+    for (final story in _stories ?? const <StoryItemTypes>[]) {
+      final genre = story.category.trim();
+      if (genre.isEmpty || seen.contains(genre)) continue;
+      seen.add(genre);
+      if (seen.length == 3) break;
+    }
+    return seen;
+  }
+
   AuthorApiModel? _author;
   List<StoryItemTypes>? _stories;
   String? _error;
@@ -551,62 +568,32 @@ class _AuthorProfileState extends State<AuthorProfile> {
                     author.aboutMe,
                     style: TextStyle(color: Colors.white, fontSize: 12),
                   ),
-                  Row(
-                    spacing: 16,
-                    children: [
-                      Container(
-                        padding: EdgeInsets.all(4),
-                        decoration: BoxDecoration(
-                          border: Border.all(
-                            width: 0.5,
-                            color: Color(0xffFF4DFF),
+                  // The author's genres, as the website shows them: the
+                  // first three different genres in their book list.
+                  if (_genres.isNotEmpty)
+                    Row(
+                      spacing: 16,
+                      children: [
+                        for (var i = 0; i < _genres.length; i++)
+                          Container(
+                            padding: EdgeInsets.all(4),
+                            decoration: BoxDecoration(
+                              border: Border.all(
+                                width: 0.5,
+                                color: _genreColors[i],
+                              ),
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                            child: Text(
+                              _genres[i],
+                              style: TextStyle(
+                                color: _genreColors[i],
+                                fontSize: 12,
+                              ),
+                            ),
                           ),
-                          borderRadius: BorderRadius.circular(4),
-                        ),
-                        child: Text(
-                          'Romance',
-                          style: TextStyle(
-                            color: Color(0xffFF4DFF),
-                            fontSize: 12,
-                          ),
-                        ),
-                      ),
-                      Container(
-                        padding: EdgeInsets.all(4),
-                        decoration: BoxDecoration(
-                          border: Border.all(
-                            width: 0.5,
-                            color: Color(0xff00B076),
-                          ),
-                          borderRadius: BorderRadius.circular(4),
-                        ),
-                        child: Text(
-                          'Thriller',
-                          style: TextStyle(
-                            color: Color(0xff00B076),
-                            fontSize: 12,
-                          ),
-                        ),
-                      ),
-                      Container(
-                        padding: EdgeInsets.all(4),
-                        decoration: BoxDecoration(
-                          border: Border.all(
-                            width: 0.5,
-                            color: Color(0xffC384FF),
-                          ),
-                          borderRadius: BorderRadius.circular(4),
-                        ),
-                        child: Text(
-                          'Fantasy',
-                          style: TextStyle(
-                            color: Color(0xffC384FF),
-                            fontSize: 12,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
+                      ],
+                    ),
                 ],
               ),
             ),

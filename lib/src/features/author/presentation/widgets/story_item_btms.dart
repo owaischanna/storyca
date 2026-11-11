@@ -5,6 +5,7 @@ import 'package:storryca/src/core/constants/colors.const.dart';
 import 'package:storryca/src/core/constants/text_styyle.dart';
 import 'package:storryca/src/core/network/api.dart';
 import 'package:storryca/src/core/network/api_client.dart';
+import 'package:storryca/src/core/network/models/story_api_model.dart';
 import 'package:storryca/src/core/widgets/app_snackbar.dart';
 import 'package:storryca/src/core/widgets/sign_in_redirect.dart';
 
@@ -14,8 +15,12 @@ class StoryActionsBTMS extends StatefulWidget {
     required this.storyId,
     required this.state,
     required this.publishStatus,
+    this.story,
     this.onChanged,
   });
+
+  /// The full story — opens "Edit Story" prefilled with it.
+  final StoryApiModel? story;
 
   final int storyId;
 
@@ -73,11 +78,25 @@ class _StoryActionsBTMSState extends State<StoryActionsBTMS> {
     final chapters = e.data?['chapters'];
     final required = e.data?['required'];
     if (e.isUnprocessable && chapters is int && required is int) {
-      final has = chapters == 1 ? "1 published chapter" : "$chapters published chapters";
+      final has = chapters == 1
+          ? "1 published chapter"
+          : "$chapters published chapters";
       return "Mark as completed needs $required published chapters. "
           "This story has $has — drafts and chapters in review don't count.";
     }
     return e.message;
+  }
+
+  /// Closes the sheet and opens the story wizard prefilled; reloads the
+  /// list when the edit was saved.
+  Future<void> _edit() async {
+    final story = widget.story;
+    if (story == null) return;
+    final router = GoRouter.of(context);
+    final onChanged = widget.onChanged;
+    context.pop();
+    final saved = await router.push<bool>('/new-story', extra: story);
+    if (saved == true) onChanged?.call();
   }
 
   void _toggleCompleted() => _run((token) async {
@@ -228,46 +247,49 @@ class _StoryActionsBTMSState extends State<StoryActionsBTMS> {
             ),
 
             // EDIT STORY
-            Container(
-              padding: EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                border: Border.all(
-                  width: 1,
-                  color: Color.fromRGBO(195, 132, 255, 0.05),
+            GestureDetector(
+              onTap: _edit,
+              child: Container(
+                padding: EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  border: Border.all(
+                    width: 1,
+                    color: Color.fromRGBO(195, 132, 255, 0.05),
+                  ),
+                  borderRadius: BorderRadius.circular(8),
                 ),
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Row(
-                spacing: 8,
-                children: [
-                  Container(
-                    width: 40,
-                    height: 40,
-                    decoration: BoxDecoration(
-                      color: Color.fromRGBO(145, 16, 222, 0.1),
-                      borderRadius: BorderRadius.circular(40),
+                child: Row(
+                  spacing: 8,
+                  children: [
+                    Container(
+                      width: 40,
+                      height: 40,
+                      decoration: BoxDecoration(
+                        color: Color.fromRGBO(145, 16, 222, 0.1),
+                        borderRadius: BorderRadius.circular(40),
+                      ),
+                      child: ShaderMask(
+                        shaderCallback: (bounds) {
+                          return defaultGradientTTB.createShader(bounds);
+                        },
+                        child: Icon(Remix.edit_line, color: Colors.white),
+                      ),
                     ),
-                    child: ShaderMask(
-                      shaderCallback: (bounds) {
-                        return defaultGradientTTB.createShader(bounds);
-                      },
-                      child: Icon(Remix.edit_line, color: Colors.white),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        spacing: 4,
+                        children: [
+                          Text('Edit Story', style: whiteF14TS),
+                          Text(
+                            'Manage the title, genre, tags, photo and so on of this story',
+                            style: defaultTextStyle10,
+                          ),
+                        ],
+                      ),
                     ),
-                  ),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      spacing: 4,
-                      children: [
-                        Text('Edit Story', style: whiteF14TS),
-                        Text(
-                          'Manage the title, genre, tags, photo and so on of this story',
-                          style: defaultTextStyle10,
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
+                  ],
+                ),
               ),
             ),
 

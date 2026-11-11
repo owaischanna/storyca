@@ -13,6 +13,7 @@ class AuthorApiModel {
     required this.followings,
     required this.joinedAt,
     required this.publishedStories,
+    this.aboutMyBooks = '',
   });
 
   final int id;
@@ -29,6 +30,9 @@ class AuthorApiModel {
   final String joinedAt;
   final int publishedStories;
 
+  /// The author's "About My Books" text from Edit Profile.
+  final String aboutMyBooks;
+
   factory AuthorApiModel.fromJson(Map<String, dynamic> json) => AuthorApiModel(
     id: json['id'] as int,
     name: json['name'] as String? ?? '',
@@ -43,5 +47,6 @@ class AuthorApiModel {
     followings: json['followings'] as int? ?? 0,
     joinedAt: json['joined_at'] as String? ?? '',
     publishedStories: json['published_stories'] as int? ?? 0,
+    aboutMyBooks: json['about_my_books'] as String? ?? '',
   );
 }

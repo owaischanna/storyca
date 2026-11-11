@@ -67,7 +67,7 @@ class _StoryUnlockedState extends State<StoryUnlocked> {
   void _openReader() {
     final chapterId = _chapterId;
     if (chapterId == null) return;
-    context.push('/read/$chapterId');
+    context.push('/read/$chapterId', extra: widget.storyId);
   }
 
   @override

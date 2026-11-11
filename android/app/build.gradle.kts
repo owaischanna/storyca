@@ -63,11 +63,17 @@ android {
             } else {
                 signingConfigs.getByName("debug")
             }
-            // R8 shrinking/obfuscation crashes WorkManager's Room database
-            // (androidx.work, pulled in transitively by google_mobile_ads)
-            // without tuned keep rules — off until those rules are written.
-            isMinifyEnabled = false
-            isShrinkResources = false
+            // R8 code shrinking + obfuscation and resource shrinking. The
+            // keep rules in proguard-rules.pro protect what plugins reach by
+            // reflection (incl. WorkManager's Room database, which used to
+            // crash without them). The mapping file is bundled into the AAB,
+            // so Play Console deobfuscates crash reports automatically.
+            isMinifyEnabled = true
+            isShrinkResources = true
+            proguardFiles(
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro",
+            )
         }
     }
 }

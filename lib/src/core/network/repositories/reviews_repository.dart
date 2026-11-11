@@ -10,6 +10,51 @@ class ReviewsPage {
   final RatingSummaryApiModel summary;
 }
 
+/// A saved review or comment. [summary] and [item] come straight from the
+/// reply's `data`; either is null when the reply didn't carry it in a shape
+/// this app reads, and the caller then reloads the list instead.
+class ReviewPostResult {
+  ReviewPostResult({required this.message, this.summary, this.item});
+
+  final String message;
+  final RatingSummaryApiModel? summary;
+  final ReviewApiModel? item;
+
+  factory ReviewPostResult.fromEnvelope(
+    Map<String, dynamic> res, {
+    required String kind,
+    required String fallbackMessage,
+  }) {
+    final data = res['data'];
+    RatingSummaryApiModel? summary;
+    ReviewApiModel? item;
+    if (data is Map<String, dynamic>) {
+      try {
+        final s = data['summary'];
+        if (s is Map<String, dynamic>) {
+          summary = RatingSummaryApiModel.fromJson(s);
+        }
+      } catch (_) {}
+      try {
+        final r = data[kind];
+        if (r is Map<String, dynamic>) {
+          // It's the reader's own post, whatever the reply says.
+          item = ReviewApiModel.fromJson({
+            ...r,
+            'kind': r['kind'] ?? kind,
+            'is_mine': true,
+          });
+        }
+      } catch (_) {}
+    }
+    return ReviewPostResult(
+      message: res['message'] as String? ?? fallbackMessage,
+      summary: summary,
+      item: item,
+    );
+  }
+}
+
 class ReviewsRepository {
   ReviewsRepository(this._client);
 
@@ -61,10 +106,9 @@ class ReviewsRepository {
   }
 
   /// A reader's first post on a story must carry [rating] (1–5) and becomes
-  /// their review; sending a rating again edits that review. Returns the
-  /// server's message. The response shape differs between a review and a
-  /// comment, so callers reload the list rather than reading it.
-  Future<String> postReview(
+  /// their review; sending a rating again edits that review. The reply's
+  /// `data.summary` and `data.review` repaint the panel and list directly.
+  Future<ReviewPostResult> postReview(
     int storyId, {
     required int rating,
     String body = '',
@@ -78,12 +122,16 @@ class ReviewsRepository {
               includeEnvelope: true,
             )
             as Map<String, dynamic>;
-    return res['message'] as String? ?? 'Review saved.';
+    return ReviewPostResult.fromEnvelope(
+      res,
+      kind: 'review',
+      fallbackMessage: 'Review saved.',
+    );
   }
 
   /// Any post after the reader's review — no rating. Refused with 422
   /// "Rate the story first…" if they haven't reviewed yet.
-  Future<String> postComment(
+  Future<ReviewPostResult> postComment(
     int storyId, {
     required String body,
     required String token,
@@ -96,7 +144,11 @@ class ReviewsRepository {
               includeEnvelope: true,
             )
             as Map<String, dynamic>;
-    return res['message'] as String? ?? 'Comment posted.';
+    return ReviewPostResult.fromEnvelope(
+      res,
+      kind: 'comment',
+      fallbackMessage: 'Comment posted.',
+    );
   }
 
   /// Removes only the rating; the reader's comments stay. Repaint the stars

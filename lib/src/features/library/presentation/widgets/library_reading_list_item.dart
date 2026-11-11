@@ -30,7 +30,7 @@ class LibraryReadingListItem extends StatelessWidget {
   Widget build(BuildContext context) {
     return GestureDetector(
       onTap: () => progressChapterId != null
-          ? context.push('/read/$progressChapterId')
+          ? context.push('/read/$progressChapterId', extra: id)
           : context.push('/story/$id'),
       child: Container(
         padding: EdgeInsets.all(8),

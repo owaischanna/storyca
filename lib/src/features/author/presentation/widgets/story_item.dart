@@ -5,6 +5,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:remixicon/remixicon.dart';
 import 'package:storryca/src/core/constants/colors.const.dart';
 import 'package:storryca/src/core/constants/text_styyle.dart';
+import 'package:storryca/src/core/network/models/story_api_model.dart';
 import 'package:storryca/src/core/widgets/app_image.dart';
 import 'package:storryca/src/core/widgets/custom_badge.dart';
 import 'package:storryca/src/features/author/presentation/widgets/story_item_btms.dart';
@@ -22,8 +23,12 @@ class StoryItem extends StatelessWidget {
     required this.status,
     required this.category,
     required this.publishStatus,
+    this.story,
     this.onChanged,
   });
+
+  /// The full story, for "Edit Story".
+  final StoryApiModel? story;
 
   /// Called after the author completes/reopens or deletes this story.
   final VoidCallback? onChanged;
@@ -224,6 +229,7 @@ class StoryItem extends StatelessWidget {
               storyId: id,
               state: status,
               publishStatus: publishStatus,
+              story: story,
               onChanged: onChanged,
             );
           },

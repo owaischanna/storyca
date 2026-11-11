@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:remixicon/remixicon.dart';
 import 'package:storryca/src/core/network/api.dart';
 import 'package:storryca/src/core/constants/colors.const.dart';
+import 'package:storryca/src/core/widgets/age_question.dart';
 import 'package:storryca/src/features/discover/presentation/pages/discover.dart';
 import 'package:storryca/src/features/home/presentation/pages/home.dart';
 import 'package:storryca/src/features/library/presentation/pages/library.dart';
@@ -42,11 +43,28 @@ class _MainState extends State<Main> {
     _pageIndex = widget.initialIndex;
     // Bookmarks on cards and "Add to Library" menus paint from this.
     authService.getToken().then(libraryRepository.ensureSavedIds);
+    _checkAge();
+  }
+
+  /// Bumped when the reader confirms they're 18+, so the tabs reload with
+  /// the 18+ books the server was hiding until then.
+  int _contentEpoch = 0;
+
+  /// Asks a signed-in reader the one-time age question (sign-in can land
+  /// here on an existing shell, so this also runs on widget updates — it
+  /// only reaches the server until the answer is known).
+  void _checkAge() {
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      if (!mounted) return;
+      final becameAdult = await askAgeIfNeeded(context);
+      if (becameAdult && mounted) setState(() => _contentEpoch++);
+    });
   }
 
   @override
   void didUpdateWidget(covariant Main oldWidget) {
     super.didUpdateWidget(oldWidget);
+    _checkAge();
     if (oldWidget.initialIndex != widget.initialIndex) {
       setState(() {
         _pageIndex = widget.initialIndex;
@@ -71,7 +89,10 @@ class _MainState extends State<Main> {
         children: [
           for (var i = 0; i < _pageBuilders.length; i++)
             _builtIndices.contains(i)
-                ? _pageBuilders[i]()
+                ? KeyedSubtree(
+                    key: ValueKey('$i-$_contentEpoch'),
+                    child: _pageBuilders[i](),
+                  )
                 : const SizedBox.shrink(),
         ],
       ),

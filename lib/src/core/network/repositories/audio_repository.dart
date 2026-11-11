@@ -31,14 +31,40 @@ class ChapterAudio {
   bool get urlExpired =>
       DateTime.now().difference(fetchedAt).inSeconds > expiresIn - 120;
 
-  factory ChapterAudio.fromJson(Map<String, dynamic> j) => ChapterAudio(
-    chapterId: (j['chapter_id'] as num?)?.toInt() ?? 0,
-    status: j['status'] as String? ?? 'none',
-    ready: j['ready'] as bool? ?? false,
-    duration: j['duration'] as String? ?? '',
-    audioUrl: j['audio_url'] as String?,
-    expiresIn: (j['url_expires_in'] as num?)?.toInt() ?? 0,
-  );
+  /// Read leniently: a `ready` sent as 1/"1"/"true", or a numeric field
+  /// sent as a string, must not throw — a parse error here escaped the
+  /// audio bar's error handling and left Listen silently doing nothing.
+  factory ChapterAudio.fromJson(Map<String, dynamic> j) {
+    final status = '${j['status'] ?? 'none'}'.toLowerCase();
+    final url = _absoluteUrl(j['audio_url'] ?? j['url']);
+    return ChapterAudio(
+      chapterId: _int(j['chapter_id']),
+      status: status,
+      ready: (_bool(j['ready']) || status == 'ready') && url != null,
+      duration: '${j['duration'] ?? ''}',
+      audioUrl: url,
+      expiresIn: _int(j['url_expires_in']),
+    );
+  }
+
+  bool get pending => !ready && (status == 'pending' || status == 'processing');
+
+  static int _int(Object? v) =>
+      v is num ? v.toInt() : int.tryParse('${v ?? ''}') ?? 0;
+
+  static bool _bool(Object? v) =>
+      v == true || v == 1 || v == '1' || '$v'.toLowerCase() == 'true';
+
+  /// The player needs an absolute https link: Android refuses plain http,
+  /// and a bare path can't be opened at all.
+  static String? _absoluteUrl(Object? v) {
+    final s = (v is String ? v : '').trim();
+    if (s.isEmpty) return null;
+    if (s.startsWith('https://')) return s;
+    if (s.startsWith('http://')) return 'https://${s.substring(7)}';
+    if (s.startsWith('//')) return 'https:$s';
+    return 'https://storryca.com/${s.startsWith('/') ? s.substring(1) : s}';
+  }
 }
 
 class AudioRepository {

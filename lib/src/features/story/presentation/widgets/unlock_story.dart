@@ -11,7 +11,11 @@ class UnlockStory extends StatelessWidget {
     required this.unlockStory,
     required this.price,
     this.unlocking = false,
+    this.freeChapters = 0,
   });
+
+  /// The book's free opening chapters, from the server's flags.
+  final int freeChapters;
 
   final void Function() unlockStory;
 
@@ -63,7 +67,11 @@ class UnlockStory extends StatelessWidget {
                     children: [
                       Text('Unlock to Read', style: whiteF14TS),
                       Text(
-                        'Unlock this book to start reading all chapters.',
+                        freeChapters > 0
+                            ? 'The first $freeChapters '
+                                  '${freeChapters == 1 ? 'chapter is' : 'chapters are'} '
+                                  'free. Unlock all chapters to read the rest.'
+                            : 'Unlock this book to start reading all chapters.',
                         style: defaultTextStyle,
                       ),
                     ],

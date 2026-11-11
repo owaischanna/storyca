@@ -92,7 +92,13 @@ class _SignInState extends State<SignIn> {
                   // HEADER
                   IconButton(
                     onPressed: () {
-                      context.pop();
+                      // Opened from onboarding's Login there is nothing to
+                      // go back to — go into the app instead of failing.
+                      if (context.canPop()) {
+                        context.pop();
+                      } else {
+                        context.go('/main/2');
+                      }
                     },
                     icon: Icon(Remix.arrow_left_s_line),
                     color: Colors.white,

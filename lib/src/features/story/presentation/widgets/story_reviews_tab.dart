@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:go_router/go_router.dart';
 import 'package:remixicon/remixicon.dart';
 import 'package:storryca/src/core/constants/colors.const.dart';
 import 'package:storryca/src/core/constants/text_styyle.dart';
@@ -32,7 +31,6 @@ class _StoryReviewsTabState extends State<StoryReviewsTab> {
   bool _loadingMore = false;
   String? _error;
 
-  bool _submitting = false;
   bool _deleting = false;
 
   /// From GET /reviews/mine — null means the reader hasn't rated yet, so
@@ -78,13 +76,18 @@ class _StoryReviewsTabState extends State<StoryReviewsTab> {
     }
   }
 
-  Future<void> _submitReview(int rating, String body) async {
+  Future<void> _submitReview(
+    BuildContext sheetContext,
+    int rating,
+    String body,
+  ) async {
     final token = _token;
     if (token == null) {
       AppSnackbar.warning(context, 'Sign in to write a review.');
       return;
     }
     await _post(
+      sheetContext,
       () => reviewsRepository.postReview(
         widget.storyId,
         rating: rating,
@@ -94,13 +97,14 @@ class _StoryReviewsTabState extends State<StoryReviewsTab> {
     );
   }
 
-  Future<void> _submitComment(String body) async {
+  Future<void> _submitComment(BuildContext sheetContext, String body) async {
     final token = _token;
     if (token == null) {
       AppSnackbar.warning(context, 'Sign in to comment.');
       return;
     }
     await _post(
+      sheetContext,
       () => reviewsRepository.postComment(
         widget.storyId,
         body: body,
@@ -109,24 +113,57 @@ class _StoryReviewsTabState extends State<StoryReviewsTab> {
     );
   }
 
-  /// Review and comment POSTs answer with different shapes, so reload the
-  /// whole list afterwards rather than patching it from the response.
-  Future<void> _post(Future<String> Function() send) async {
-    setState(() => _submitting = true);
-    try {
-      final message = await send();
-      if (!mounted) return;
-      context.pop();
-      AppSnackbar.success(context, message);
-      await _load();
-    } on ApiException catch (e) {
-      // Close the modal first — a snackbar raised under it would be hidden.
-      if (!mounted) return;
-      context.pop();
-      AppSnackbar.error(context, e.message);
-    } finally {
-      if (mounted) setState(() => _submitting = false);
+  /// Closes the review sheet and nothing else. `context.pop()` from the page
+  /// closes whatever is on top — so a second Submit tap, or a sheet the
+  /// reader had already dismissed while the post was in flight, used to pop
+  /// the novel page itself and drop the reader on Home.
+  void _closeSheet(BuildContext sheetContext) {
+    if (sheetContext.mounted &&
+        (ModalRoute.of(sheetContext)?.isCurrent ?? false)) {
+      Navigator.of(sheetContext).pop();
     }
+  }
+
+  Future<void> _post(
+    BuildContext sheetContext,
+    Future<ReviewPostResult> Function() send,
+  ) async {
+    try {
+      final result = await send();
+      if (!mounted) return;
+      if (sheetContext.mounted) _closeSheet(sheetContext);
+      AppSnackbar.success(context, result.message);
+      _apply(result);
+    } on ApiException catch (e) {
+      // Close the sheet first — a snackbar raised under it would be hidden.
+      if (!mounted) return;
+      if (sheetContext.mounted) _closeSheet(sheetContext);
+      AppSnackbar.error(context, e.message);
+    }
+  }
+
+  /// Repaints the Overall Rating panel and the list straight from the
+  /// reply — no refetch. Falls back to a reload only if the reply didn't
+  /// carry what's needed.
+  void _apply(ReviewPostResult result) {
+    final item = result.item;
+    final summary = result.summary;
+    if (item == null || (!item.isComment && summary == null)) {
+      _load();
+      return;
+    }
+    setState(() {
+      if (summary != null) _summary = summary;
+      final list = [...?_reviews];
+      final i = list.indexWhere((r) => r.kind == item.kind && r.id == item.id);
+      if (i >= 0) {
+        list[i] = item;
+      } else {
+        list.insert(0, item);
+      }
+      _reviews = list;
+      if (!item.isComment) _myReview = item;
+    });
   }
 
   Future<void> _delete(ReviewApiModel item) async {
@@ -334,6 +371,9 @@ class _StoryReviewsTabState extends State<StoryReviewsTab> {
   }) {
     final controller = TextEditingController(text: initialBody);
     var rating = initialRating;
+    // Held by the sheet itself: the page's own setState never rebuilds this
+    // route, so a page-level flag left Submit live for a second tap.
+    var sending = false;
     return showModalBottomSheet(
       barrierColor: Color.fromRGBO(255, 255, 255, 0.1),
       isScrollControlled: true,
@@ -389,7 +429,7 @@ class _StoryReviewsTabState extends State<StoryReviewsTab> {
                               ),
                             ),
                             GestureDetector(
-                              onTap: () => context.pop(),
+                              onTap: () => _closeSheet(context),
                               child: Icon(
                                 Remix.close_large_line,
                                 color: Colors.white,
@@ -544,7 +584,7 @@ class _StoryReviewsTabState extends State<StoryReviewsTab> {
                           children: [
                             Expanded(
                               child: GestureDetector(
-                                onTap: () => context.pop(),
+                                onTap: () => _closeSheet(context),
                                 child: Container(
                                   padding: EdgeInsets.symmetric(vertical: 8),
                                   decoration: BoxDecoration(
@@ -578,17 +618,25 @@ class _StoryReviewsTabState extends State<StoryReviewsTab> {
                             Expanded(
                               child: GestureDetector(
                                 onTap:
-                                    _submitting || (!isComment && rating == 0)
+                                    sending || (!isComment && rating == 0)
                                     ? null
-                                    : () {
+                                    : () async {
                                         final body = controller.text.trim();
+                                        // Nothing to send yet; a warning
+                                        // snackbar would sit under the modal.
+                                        if (isComment && body.isEmpty) return;
+                                        setSheetState(() => sending = true);
                                         if (isComment) {
-                                          // Nothing to send yet; a warning
-                                          // snackbar would sit under the modal.
-                                          if (body.isEmpty) return;
-                                          _submitComment(body);
+                                          await _submitComment(context, body);
                                         } else {
-                                          _submitReview(rating, body);
+                                          await _submitReview(
+                                            context,
+                                            rating,
+                                            body,
+                                          );
+                                        }
+                                        if (context.mounted) {
+                                          setSheetState(() => sending = false);
                                         }
                                       },
                                 child: Container(
@@ -606,7 +654,7 @@ class _StoryReviewsTabState extends State<StoryReviewsTab> {
                                     spacing: 8,
                                     children: [
                                       Text(
-                                        _submitting ? 'Saving…' : 'Submit',
+                                        sending ? 'Saving…' : 'Submit',
                                         style: TextStyle(
                                           color: Colors.white,
                                           fontSize: 16,

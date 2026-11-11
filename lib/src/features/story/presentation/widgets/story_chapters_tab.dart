@@ -105,7 +105,10 @@ class _StoryChaptersTabState extends State<StoryChaptersTab> {
                 children: [
                   ..._chapters!.map((item) {
                     return GestureDetector(
-                      onTap: () => context.push('/read/${item.id}'),
+                      onTap: () => context.push(
+                        '/read/${item.id}',
+                        extra: widget.storyId,
+                      ),
                       child: StoryChapterItem(
                         index: item.orderIndex,
                         name: item.title,

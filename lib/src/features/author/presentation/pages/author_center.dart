@@ -192,6 +192,7 @@ class _AuthorCenterState extends State<AuthorCenter> {
                                   status: item.status,
                                   category: item.category,
                                   publishStatus: story.status,
+                                  story: story,
                                   onChanged: _load,
                                 );
                               }),
